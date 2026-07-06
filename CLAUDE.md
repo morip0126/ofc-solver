@@ -1,7 +1,7 @@
 # 開発メモ（OFC Solver）
 
-パイナップル OFC（Open Face Chinese poker）のソルバー。Vite + React + TypeScript。
-重い計算は将来的に Web Worker に載せる想定（MixMage と同じ流儀）。
+パイナップル OFC（Open Face Chinese poker）の実戦アシスタント / ソルバー。Vite + React + TypeScript。
+重い計算は Web Worker で実行（MixMage と同じ流儀）。
 
 ## ビルド / 確認
 
@@ -23,12 +23,17 @@
 
 - 種類（Variant）は `src/domain/variants.ts`。FL 規則の違いはここに集約（ロイヤリティ表は `royalties.ts` を共有）。
 - ハンド評価 `evaluator.ts`: `HandValue = [category, ...tiebreakers]`。辞書式比較で強弱が決まる。top は 3枚評価。
-- ファウル = bottom ≥ middle ≥ top を満たさない配置（`score.ts`）。
-- ソルバー `solver.ts`: `solveBest13`（全探索・決定論的）/ `estimateEVvsRandom`（モンテカルロ）/
-  `suggestInitial5`・`suggestStreet`（楽観的補完のヒューリスティック）。
+  これは**参照実装**。ホットパスは `fastEval.ts` の 24bit パックキー（整数比較・アロケーションなし）で動く。
+  **高速パスを触ったら、参照実装とのクロスチェックテスト（`fastEval.test.ts` / `solverFast.test.ts`）を必ず維持・更新する。**
+- ファウル = bottom ≥ middle ≥ top を満たさない配置（`score.ts`）。3人打ちは `scoreMultiEvaluated`（ペアワイズ・ゼロサム）。
+- ソルバー `solver.ts`: `solveBest13`（全探索・決定論的）/ `solveFantasyland`（13〜17枚、リステイ考慮）/
+  `estimateEVvsRandom`（`opponents` で複数のランダム相手に対応）/
+  `suggestInitial5`・`suggestStreet`（楽観的補完のヒューリスティック、荒→精の2段階MC）。
 - モンテカルロは決定論的 PRNG（`combinatorics.ts` の `mulberry32`）を注入してテストの再現性を確保する。
+- UI は実戦アシスタント（`App.tsx`）: プレイモード（初手→ストリート進行 + 推奨手）と FL モード。
+  Worker プロトコルは `solver.worker.ts`（suggestInitial / suggestStreet / solveFL / ev）。
 
 ## 注意
 
 - ロイヤリティ / FL 規則はルームによって差があるので、標準を実装しつつ差し替え可能にしている。
-- `estimateEVvsRandom` は相手ごとに全探索するため重い。UI に載せるときは高速化が必要。
+- 推奨手のスコア重み（flWeight / foulWeight / completionFlBonus）はヒューリスティック。変更時は挙動比較を。

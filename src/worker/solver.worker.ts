@@ -1,99 +1,170 @@
 // ソルバーの Web Worker。重い全探索・モンテカルロを UI スレッド外で実行する。
+// リクエスト/レスポンスは structured clone 可能なプレーンオブジェクト（カードは "As" 等の文字列）。
 import {
-  type Arrangement,
+  type Board,
+  type BoardSuggestion,
+  type FantasylandResult,
   type VariantId,
   VARIANTS,
-  cardsToString,
+  cardToString,
   estimateEVvsRandom,
-  evaluateArrangement,
   parseCards,
-  solveBest13,
+  solveFantasyland,
+  suggestInitial5,
+  suggestStreet,
 } from '../domain'
 
-export interface SolveRequest {
-  id: number
-  kind: 'solve'
-  cards: string[]
-  variantId: VariantId
-}
-
-export interface EvRequest {
-  id: number
-  kind: 'ev'
+export interface BoardDTO {
   top: string[]
   middle: string[]
   bottom: string[]
-  variantId: VariantId
-  iters: number
 }
 
-export type WorkerRequest = SolveRequest | EvRequest
+export interface SuggestionDTO extends BoardDTO {
+  discarded?: string
+  expRoyalty: number
+  flProb: number
+  foulProb: number
+  score: number
+}
 
-export interface SolveResponse {
-  id: number
-  kind: 'solve'
-  ok: boolean
-  best?: {
-    top: string[]
-    middle: string[]
-    bottom: string[]
-    royalties: number
-    flCards: number
+export interface FLResultDTO extends BoardDTO {
+  royalties: number
+  stays: boolean
+  objective: number
+}
+
+export type WorkerRequest =
+  | {
+      id: number
+      kind: 'suggestInitial'
+      cards: string[]
+      dead: string[]
+      variantId: VariantId
+      iters?: number
+    }
+  | {
+      id: number
+      kind: 'suggestStreet'
+      board: BoardDTO
+      drawn: string[]
+      dead: string[]
+      variantId: VariantId
+      iters?: number
+    }
+  | { id: number; kind: 'solveFL'; cards: string[]; variantId: VariantId; stayBonus?: number }
+  | {
+      id: number
+      kind: 'ev'
+      board: BoardDTO
+      dead: string[]
+      variantId: VariantId
+      iters: number
+      opponents: number
+    }
+
+export type WorkerResponse =
+  | { id: number; kind: 'progress'; done: number; total: number }
+  | { id: number; kind: 'suggestions'; suggestions: SuggestionDTO[] }
+  | { id: number; kind: 'fl'; results: FLResultDTO[] }
+  | { id: number; kind: 'ev'; ev: number }
+  | { id: number; kind: 'error'; message: string }
+
+function post(res: WorkerResponse): void {
+  ;(self as unknown as Worker).postMessage(res)
+}
+
+function toBoard(dto: BoardDTO): Board {
+  return {
+    top: parseCards(dto.top),
+    middle: parseCards(dto.middle),
+    bottom: parseCards(dto.bottom),
   }
-  error?: string
 }
 
-export interface EvResponse {
-  id: number
-  kind: 'ev'
-  ev: number
+function boardDTO(board: Board): BoardDTO {
+  return {
+    top: board.top.map(cardToString),
+    middle: board.middle.map(cardToString),
+    bottom: board.bottom.map(cardToString),
+  }
 }
 
-export type WorkerResponse = SolveResponse | EvResponse
+function suggestionDTO(s: BoardSuggestion): SuggestionDTO {
+  return {
+    ...boardDTO(s.board),
+    discarded: s.discarded ? cardToString(s.discarded) : undefined,
+    expRoyalty: s.expRoyalty,
+    flProb: s.flProb,
+    foulProb: s.foulProb,
+    score: s.score,
+  }
+}
+
+function flDTO(r: FantasylandResult): FLResultDTO {
+  return {
+    ...boardDTO(r.arrangement),
+    royalties: r.royalties,
+    stays: r.stays,
+    objective: r.objective,
+  }
+}
+
+// 進捗はメッセージ数を抑えるため間引いて送る。
+function progressReporter(id: number): (done: number, total: number) => void {
+  let last = -1
+  return (done, total) => {
+    const pct = Math.floor((done / total) * 50)
+    if (pct !== last || done === total) {
+      last = pct
+      post({ id, kind: 'progress', done, total })
+    }
+  }
+}
 
 self.onmessage = (e: MessageEvent<WorkerRequest>) => {
   const msg = e.data
   const variant = VARIANTS[msg.variantId]
-
-  if (msg.kind === 'solve') {
-    try {
-      const best = solveBest13(parseCards(msg.cards), variant, { topK: 1, fantasylandBonus: 8 })[0]
-      const res: SolveResponse = best
-        ? {
-            id: msg.id,
-            kind: 'solve',
-            ok: true,
-            best: {
-              top: best.arrangement.top.map((c) => cardsToString([c])),
-              middle: best.arrangement.middle.map((c) => cardsToString([c])),
-              bottom: best.arrangement.bottom.map((c) => cardsToString([c])),
-              royalties: best.royalties,
-              flCards: best.fantasylandCards,
-            },
-          }
-        : { id: msg.id, kind: 'solve', ok: false }
-      ;(self as unknown as Worker).postMessage(res)
-    } catch (err) {
-      const res: SolveResponse = {
-        id: msg.id,
-        kind: 'solve',
-        ok: false,
-        error: err instanceof Error ? err.message : String(err),
+  try {
+    switch (msg.kind) {
+      case 'suggestInitial': {
+        const suggestions = suggestInitial5(parseCards(msg.cards), parseCards(msg.dead), variant, {
+          iters: msg.iters ?? 120,
+          onProgress: progressReporter(msg.id),
+        })
+        post({ id: msg.id, kind: 'suggestions', suggestions: suggestions.slice(0, 5).map(suggestionDTO) })
+        break
       }
-      ;(self as unknown as Worker).postMessage(res)
+      case 'suggestStreet': {
+        const suggestions = suggestStreet(
+          toBoard(msg.board),
+          parseCards(msg.drawn),
+          parseCards(msg.dead),
+          variant,
+          { iters: msg.iters ?? 160, onProgress: progressReporter(msg.id) },
+        )
+        post({ id: msg.id, kind: 'suggestions', suggestions: suggestions.slice(0, 5).map(suggestionDTO) })
+        break
+      }
+      case 'solveFL': {
+        const results = solveFantasyland(parseCards(msg.cards), variant, {
+          stayBonus: msg.stayBonus ?? 6,
+          topK: 3,
+        })
+        post({ id: msg.id, kind: 'fl', results: results.map(flDTO) })
+        break
+      }
+      case 'ev': {
+        const board = toBoard(msg.board)
+        const ev = estimateEVvsRandom(board, parseCards(msg.dead), variant, {
+          iters: msg.iters,
+          opponents: msg.opponents,
+        })
+        post({ id: msg.id, kind: 'ev', ev })
+        break
+      }
     }
-    return
+  } catch (err) {
+    post({ id: msg.id, kind: 'error', message: err instanceof Error ? err.message : String(err) })
   }
-
-  // ev
-  const arrangement: Arrangement = {
-    top: parseCards(msg.top),
-    middle: parseCards(msg.middle),
-    bottom: parseCards(msg.bottom),
-  }
-  // 念のため評価（無効配置なら EV は estimate 側で自然に反映される）
-  evaluateArrangement(arrangement)
-  const ev = estimateEVvsRandom(arrangement, [], variant, { iters: msg.iters })
-  const res: EvResponse = { id: msg.id, kind: 'ev', ev }
-  ;(self as unknown as Worker).postMessage(res)
 }

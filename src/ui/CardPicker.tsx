@@ -6,14 +6,15 @@ const RANK_ORDER: Rank[] = [14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2]
 
 export function CardPicker({
   selected,
-  max,
+  canAdd,
   onToggle,
 }: {
+  /** 盤面のどこかで使用中のカードID。タップで取り除ける。 */
   selected: Set<number>
-  max: number
+  /** 現在の選択先に追加できるか（false なら未使用カードを無効化）。 */
+  canAdd: boolean
   onToggle: (card: Card) => void
 }) {
-  const full = selected.size >= max
   return (
     <div className="card-picker" role="group" aria-label="card picker">
       {SUIT_ORDER.map((suit) => (
@@ -22,7 +23,7 @@ export function CardPicker({
             const card: Card = { rank, suit }
             const id = cardId(card)
             const isSel = selected.has(id)
-            const disabled = full && !isSel
+            const disabled = !canAdd && !isSel
             return (
               <button
                 type="button"
