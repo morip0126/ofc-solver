@@ -26,6 +26,10 @@ import { ULTIMATE } from './variants'
 
 const HANDS = Number(process.env.FL_VALUE_HANDS ?? 0)
 
+// S_N 単体の再計測（重み反復の収束確認用）。FL価値テーブルを更新した後にこれで S_N を測り直し、
+// V の再計算値が現行テーブルと大きくずれないこと（±1点程度）を確認する。
+const SN_HANDS = Number(process.env.FL_VALUE_SN_HANDS ?? 0)
+
 // flStayRate.test.ts の 100万ハンド実測（95%CI ±0.1%）。
 const P_STAY: Record<'52' | '54', Record<number, number>> = {
   '52': { 14: 0.1054, 15: 0.1945, 16: 0.3465, 17: 0.5484 },
@@ -180,5 +184,14 @@ describe('FL value measurement (set FL_VALUE_HANDS to run)', () => {
 
   it.skipIf(HANDS <= 0)('54-card joker deck', () => {
     runDeck(true, 20)
+  }, 7_200_000)
+
+  it.skipIf(SN_HANDS <= 0)('54-card joker deck: S_N re-measurement (iteration check)', () => {
+    // 現在ソルバーに入っている FL 価値テーブルでの通常ハンド成績。反復ごとにシードを変える。
+    const sn = measureSN(true, SN_HANDS, 0x54ab)
+    console.log(
+      `[54枚+ジョーカー2] S_N(再計測) = ${sn.mean.toFixed(2)} ±${sn.se.toFixed(2)} (n=${sn.n}) ` +
+        `foul=${(100 * sn.foulRate).toFixed(1)}%`,
+    )
   }, 7_200_000)
 })
