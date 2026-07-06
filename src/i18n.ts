@@ -95,8 +95,8 @@ const messages = {
   stay: { ja: 'リステイ', en: 'Stays' },
   stayNo: { ja: 'リステイなし', en: 'No re-stay' },
   flHint: {
-    ja: '目的値 = ロイヤリティ + リステイボーナス(6)。ファウルしない配置のみ。',
-    en: 'Objective = royalties + re-stay bonus (6). Non-fouling arrangements only.',
+    ja: '目的値 = ロイヤリティ + リステイボーナス({bonus} = 実測したFL継続の期待価値)ファウルしない配置のみ。',
+    en: 'Objective = royalties + re-stay bonus ({bonus}, the measured EV of staying). Non-fouling arrangements only.',
   },
 
   noValid: { ja: '非ファウルの配列が見つかりません', en: 'No non-fouling arrangement found' },

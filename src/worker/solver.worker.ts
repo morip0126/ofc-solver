@@ -3,6 +3,8 @@
 import {
   type Board,
   type BoardSuggestion,
+  DEFAULT_STAY_BONUS,
+  DEFAULT_STAY_BONUS_JOKER,
   type FantasylandResult,
   type VariantId,
   VARIANTS,
@@ -55,7 +57,14 @@ export type WorkerRequest =
       iters?: number
       jokers?: boolean
     }
-  | { id: number; kind: 'solveFL'; cards: string[]; variantId: VariantId; stayBonus?: number }
+  | {
+      id: number
+      kind: 'solveFL'
+      cards: string[]
+      variantId: VariantId
+      stayBonus?: number
+      jokers?: boolean
+    }
   | {
       id: number
       kind: 'ev'
@@ -152,8 +161,10 @@ self.onmessage = (e: MessageEvent<WorkerRequest>) => {
         break
       }
       case 'solveFL': {
+        // リステイボーナス既定値 = 実測した V(14)（デッキに応じて 52枚用 / ジョーカー入り用）。
         const results = solveFantasyland(parseCards(msg.cards), variant, {
-          stayBonus: msg.stayBonus ?? 6,
+          stayBonus:
+            msg.stayBonus ?? (msg.jokers ? DEFAULT_STAY_BONUS_JOKER : DEFAULT_STAY_BONUS),
           topK: 3,
         })
         post({ id: msg.id, kind: 'fl', results: results.map(flDTO) })

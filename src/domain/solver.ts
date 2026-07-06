@@ -246,8 +246,24 @@ export const DEFAULT_FL_VALUES: Readonly<Record<number, number>> = {
  */
 export const DEFAULT_FOUL_WEIGHT = 9.0
 
+/**
+ * ジョーカー2枚入り（54枚デッキ）用の FL 期待価値。導出方法は DEFAULT_FL_VALUES と同一
+ * （計測ランナー: flValueRate.test.ts、pStay はジョーカー入りの実測値を使用）。
+ * ジョーカー入りは pStay が高く（14枚 37.7% 等）リステイ連鎖が長いため、FL の価値が大幅に大きい。
+ * 実測: S_N=（計測中）, S_FL={…}, pStay={14:37.7%, 15:49.7%, 16:63.9%, 17:77.7%}
+ */
+export const DEFAULT_FL_VALUES_JOKER: Readonly<Record<number, number>> = {
+  14: 22.2,
+  15: 31.2,
+  16: 38.0,
+  17: 48.0,
+}
+
 /** リステイの目的関数ボーナス既定値 = V(14)（リステイは14枚で継続すると仮定）。 */
 export const DEFAULT_STAY_BONUS = DEFAULT_FL_VALUES[14]
+
+/** ジョーカー入りのリステイボーナス既定値 = ジョーカー入りの V(14)。 */
+export const DEFAULT_STAY_BONUS_JOKER = DEFAULT_FL_VALUES_JOKER[14]
 
 export interface FantasylandOptions {
   /** リステイ（FL 継続）に与えるボーナス点（目的関数に加算）。既定は V(14) の実測値。 */
@@ -601,9 +617,11 @@ export function evaluateBoard(
     completionFlBonus,
     jokers = false,
   } = options
-  // flWeight を明示指定してテーブル省略ならレガシー動作（フラット加点）。それ以外は実測テーブル。
+  // flWeight を明示指定してテーブル省略ならレガシー動作（フラット加点）。それ以外は実測テーブル
+  // （デッキに応じて 52枚用 / ジョーカー入り用を選ぶ）。
   const flValues =
-    options.flValues ?? (flWeight !== undefined ? undefined : DEFAULT_FL_VALUES)
+    options.flValues ??
+    (flWeight !== undefined ? undefined : jokers ? DEFAULT_FL_VALUES_JOKER : DEFAULT_FL_VALUES)
   const flFlat = flWeight ?? 6
   const flValueOf = (flCards: number): number =>
     flCards > 0 ? (flValues ? (flValues[flCards] ?? 0) : flFlat) : 0

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   type Card,
+  DEFAULT_STAY_BONUS,
+  DEFAULT_STAY_BONUS_JOKER,
   ROW_CAP,
   type RowKey,
   type VariantId,
@@ -441,9 +443,10 @@ export default function App() {
       kind: 'solveFL',
       cards: pool.map(cardToString),
       variantId,
+      jokers: useJokers,
     }
     worker.postMessage(req)
-  }, [pool, variantId])
+  }, [pool, variantId, useJokers])
 
   // ---- 完成時の評価 ----
   const variant = VARIANTS[variantId]
@@ -772,7 +775,13 @@ export default function App() {
               <ResultRows lang={lang} top={parseCards(r.top)} middle={parseCards(r.middle)} bottom={parseCards(r.bottom)} />
             </div>
           ))}
-          {flResults.length > 0 && <p className="ev-hint">{t(lang, 'flHint')}</p>}
+          {flResults.length > 0 && (
+            <p className="ev-hint">
+              {t(lang, 'flHint', {
+                bonus: useJokers ? DEFAULT_STAY_BONUS_JOKER : DEFAULT_STAY_BONUS,
+              })}
+            </p>
+          )}
         </section>
       )}
 
