@@ -37,6 +37,7 @@ Vite + React + TypeScript。重い計算は Web Worker で実行。
 | `variants.ts` | 種類（Normal / Ultimate）とファンタジーランド規則 |
 | `score.ts` | ファウル判定・合計ロイヤリティ・対戦スコアリング（HU / マルチ） |
 | `solver.ts` | 最善配列の全探索 / FL ソルバー / モンテカルロ EV / ストリート推奨 |
+| `flStay.ts` | FL リステイ可能性の厳密判定と継続率のモンテカルロ推定 |
 
 ## ソルバーが提供する機能
 
@@ -51,6 +52,9 @@ Vite + React + TypeScript。重い計算は Web Worker で実行。
   荒く評価 → 上位のみ精評価）。
 - `suggestStreet(board, drawn, dead, variant)` — 各ストリートの最善手を推定。
 - `scoreMultiEvaluated(players, variant)` — 3人打ちのペアワイズ採点（ゼロサム）。
+- `canStayFantasyland(cards)` / `estimateFantasylandStayRate(n)` — FL 配牌がリステイ可能かの
+  厳密判定（クアッズ/SF/トリップス候補に特化した枝刈り、1ハンド平均 ~0.1ms）と、
+  それを使った継続率 pStay(n) のモンテカルロ推定。
 
 `suggestInitial5` / `suggestStreet` は「以降の引きは最適に配置できる」という**楽観的補完**に基づく
 ヒューリスティック。相対的な手の優劣付けには機能しますが、相手を考慮した厳密な逐次最適化ではありません。

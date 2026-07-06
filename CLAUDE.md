@@ -29,6 +29,8 @@
 - ソルバー `solver.ts`: `solveBest13`（全探索・決定論的）/ `solveFantasyland`（13〜17枚、リステイ考慮）/
   `estimateEVvsRandom`（`opponents` で複数のランダム相手に対応）/
   `suggestInitial5`・`suggestStreet`（楽観的補完のヒューリスティック、荒→精の2段階MC）。
+- FL 継続率: `flStay.ts` の `stayFeasibility` がリステイ可能性を厳密判定（`solveFantasyland` との
+  クロスチェックテストで担保）。継続率の再計測は `FL_STAY_ITERS=500000 pnpm vitest run src/domain/flStayRate.test.ts --testTimeout=3600000`。
 - モンテカルロは決定論的 PRNG（`combinatorics.ts` の `mulberry32`）を注入してテストの再現性を確保する。
 - UI は実戦アシスタント（`App.tsx`）: プレイモード（初手→ストリート進行 + 推奨手）と FL モード。
   Worker プロトコルは `solver.worker.ts`（suggestInitial / suggestStreet / solveFL / ev）。
