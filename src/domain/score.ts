@@ -81,3 +81,22 @@ export function scoreEvaluated(
 export function scorePairwise(a: Arrangement, b: Arrangement, variant: Variant): number {
   return scoreEvaluated(evaluateArrangement(a), evaluateArrangement(b), variant)
 }
+
+/**
+ * 3人打ち（または2人）のペアワイズ採点。各プレイヤーの得点 = 他の各プレイヤーとの
+ * ヘッズアップ得点の合計。ゼロサム（合計は常に 0）。
+ */
+export function scoreMultiEvaluated(
+  players: readonly EvaluatedArrangement[],
+  variant: Variant,
+): number[] {
+  const totals = players.map(() => 0)
+  for (let i = 0; i < players.length; i++) {
+    for (let j = i + 1; j < players.length; j++) {
+      const s = scoreEvaluated(players[i], players[j], variant)
+      totals[i] += s
+      totals[j] -= s
+    }
+  }
+  return totals
+}

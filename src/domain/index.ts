@@ -2,6 +2,7 @@
 export * from './cards'
 export * from './combinatorics'
 export * from './evaluator'
+export * from './fastEval'
 export * from './royalties'
 export * from './variants'
 export * from './score'
