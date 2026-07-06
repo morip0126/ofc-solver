@@ -80,6 +80,7 @@ export default function App() {
   const [variantId, setVariantId] = useState<VariantId>('normal')
   const [players, setPlayersState] = useState<2 | 3>(2)
   const [mode, setModeState] = useState<Mode>('play')
+  const [useJokers, setUseJokersState] = useState(false)
 
   const [hero, setHero] = useState<PB>(emptyBoard)
   const [heroDiscards, setHeroDiscards] = useState<Card[]>([])
@@ -183,6 +184,15 @@ export default function App() {
     setEv(null)
     setTarget({ kind: 'pool' })
   }, [])
+
+  // デッキ切替（ジョーカー有無）は盤面のカードと整合しなくなるため全リセットする。
+  const setUseJokers = useCallback(
+    (on: boolean) => {
+      setUseJokersState(on)
+      resetAll()
+    },
+    [resetAll],
+  )
 
   const pushHistory = useCallback(() => {
     setHistory((h) => [
@@ -357,6 +367,7 @@ export default function App() {
             cards: pool.map(cardToString),
             dead: dead.map(cardToString),
             variantId,
+            jokers: useJokers,
           }
         : {
             id,
@@ -365,10 +376,11 @@ export default function App() {
             drawn: pool.map(cardToString),
             dead: dead.map(cardToString),
             variantId,
+            jokers: useJokers,
           }
     worker.postMessage(req)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, heroCodes, poolCodes, deadCodes, variantId])
+  }, [mode, heroCodes, poolCodes, deadCodes, variantId, useJokers])
 
   // 盤面・設定が変わったら EV はリセット
   useEffect(() => {
@@ -377,7 +389,7 @@ export default function App() {
     evWorker.current = null
     setEvBusy(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [heroCodes, deadCodes, variantId, players, mode])
+  }, [heroCodes, deadCodes, variantId, players, mode, useJokers])
 
   const estimateEv = useCallback(() => {
     evWorker.current?.terminate()
@@ -402,9 +414,10 @@ export default function App() {
       variantId,
       iters: 200,
       opponents: players - 1,
+      jokers: useJokers,
     }
     worker.postMessage(req)
-  }, [hero, dead, variantId, players])
+  }, [hero, dead, variantId, players, useJokers])
 
   const solveFL = useCallback(() => {
     flWorker.current?.terminate()
@@ -483,6 +496,16 @@ export default function App() {
           <select value={variantId} onChange={(e) => setVariantId(e.target.value as VariantId)}>
             <option value="normal">{t(lang, 'variantNormal')}</option>
             <option value="ultimate">{t(lang, 'variantUltimate')}</option>
+          </select>
+        </label>
+        <label className="ctrl-select">
+          {t(lang, 'deck')}
+          <select
+            value={useJokers ? '54' : '52'}
+            onChange={(e) => setUseJokers(e.target.value === '54')}
+          >
+            <option value="52">{t(lang, 'deck52')}</option>
+            <option value="54">{t(lang, 'deck54')}</option>
           </select>
         </label>
         <label className="ctrl-select">
@@ -775,7 +798,7 @@ export default function App() {
       ))}
 
       <p className="hint">{t(lang, 'targetHint')}</p>
-      <CardPicker selected={usedIds} canAdd={canAdd} onToggle={onPickerToggle} />
+      <CardPicker selected={usedIds} canAdd={canAdd} onToggle={onPickerToggle} jokers={useJokers} />
     </main>
   )
 }

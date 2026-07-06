@@ -356,6 +356,8 @@ export interface EVOptions {
   opponents?: number
   /** 相手の配置ポリシー（既定: ロイヤリティ最善の全探索）。 */
   opponentPolicy?: (cards: Card[], variant: Variant) => EvaluatedArrangement | null
+  /** ジョーカー2枚入り（54枚デッキ）でプレイしているか。 */
+  jokers?: boolean
 }
 
 function bestRoyaltyOpponent(cards: Card[], variant: Variant): EvaluatedArrangement | null {
@@ -374,11 +376,16 @@ export function estimateEVvsRandom(
   variant: Variant,
   options: EVOptions = {},
 ): number {
-  const { iters = 200, rng = Math.random, opponents = 1, opponentPolicy = bestRoyaltyOpponent } =
-    options
+  const {
+    iters = 200,
+    rng = Math.random,
+    opponents = 1,
+    opponentPolicy = bestRoyaltyOpponent,
+    jokers = false,
+  } = options
   const mine = evaluateArrangement(arrangement)
   const used = [...arrangement.top, ...arrangement.middle, ...arrangement.bottom, ...dead]
-  const deck = remainingDeck(used)
+  const deck = remainingDeck(used, jokers)
   if (deck.length < 13 * opponents) {
     throw new Error(`not enough cards for ${opponents} random opponents (deck=${deck.length})`)
   }
@@ -568,6 +575,8 @@ export interface RankOptions {
   foulWeight?: number
   /** 補完探索中の FL 加点（レガシー・フラット値）。flValues 指定/既定時は不使用。 */
   completionFlBonus?: number
+  /** ジョーカー2枚入り（54枚デッキ）でプレイしているか。 */
+  jokers?: boolean
 }
 
 /**
@@ -586,6 +595,7 @@ export function evaluateBoard(
     flWeight,
     foulWeight = DEFAULT_FOUL_WEIGHT,
     completionFlBonus,
+    jokers = false,
   } = options
   // flWeight を明示指定してテーブル省略ならレガシー動作（フラット加点）。それ以外は実測テーブル。
   const flValues =
@@ -614,7 +624,7 @@ export function evaluateBoard(
     }
   }
 
-  const deck = remainingDeck([...placed, ...dead])
+  const deck = remainingDeck([...placed, ...dead], jokers)
   let royaltySum = 0
   let flCount = 0
   let flValueSum = 0

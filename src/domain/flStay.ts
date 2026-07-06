@@ -107,87 +107,113 @@ function excluding(cards: readonly Card[], exclude: ReadonlySet<number>): Card[]
   return out
 }
 
-/** bottom クアッズ/ストレートフラッシュでリステイできるか。 */
+/** 実カードのランク別インデックスとジョーカーのインデックスを集める。 */
+function indexCards(cards: readonly Card[]): { byRank: number[][]; jokers: number[] } {
+  const byRank: number[][] = []
+  const jokers: number[] = []
+  for (let i = 0; i < cards.length; i++) {
+    const r = cards[i].rank
+    if (r === 0) jokers.push(i)
+    else (byRank[r] ??= []).push(i)
+  }
+  return { byRank, jokers }
+}
+
+/** bottom クアッズ/ストレートフラッシュでリステイできるか（ジョーカーは欠けの補完に使える）。 */
 function checkViaBottom(cards: readonly Card[]): boolean {
   const n = cards.length
-
-  // ランクごとのカードインデックス（クアッズ検出用）。
-  const byRank: number[][] = []
-  for (let i = 0; i < n; i++) {
-    const r = cards[i].rank
-    ;(byRank[r] ??= []).push(i)
-  }
-
+  const { byRank, jokers } = indexCards(cards)
   const exclude = new Set<number>()
 
-  // クアッズ候補: 4枚あるランクごとに、キッカー全通りで残りが埋まるか確認。
+  // クアッズ候補: 実カード (4-jb) 枚 + ジョーカー jb 枚 + キッカー1枚。
+  // 実カードが4枚あってもジョーカーで置き換えると1枚を他の段に回せるため、部分集合を全列挙する。
   for (let r = 14; r >= 2; r--) {
     const idxs = byRank[r]
-    if (!idxs || idxs.length !== 4) continue
-    for (let k = 0; k < n; k++) {
-      if (cards[k].rank === r) continue
-      const keyB = (HandCategory.Quads << 20) | (r << 16) | (cards[k].rank << 12)
-      exclude.clear()
-      for (const i of idxs) exclude.add(i)
-      exclude.add(k)
-      if (canFillMiddleTop(excluding(cards, exclude), keyB)) return true
+    if (!idxs) continue
+    for (let jb = 0; jb <= Math.min(2, jokers.length); jb++) {
+      const need = 4 - jb
+      if (idxs.length < need) continue
+      const found = findCombo(idxs.length, need, (sel) => {
+        for (let k = 0; k < n; k++) {
+          const kc = cards[k]
+          let kickerRank: number
+          if (kc.rank === 0) {
+            if (jokers.indexOf(k) < jb) continue // クアッズに使用済みのジョーカー
+            kickerRank = r === 14 ? 13 : 14 // 余りジョーカーは最強キッカーとして扱われる
+          } else {
+            if (kc.rank === r) continue
+            kickerRank = kc.rank
+          }
+          const keyB = (HandCategory.Quads << 20) | (r << 16) | (kickerRank << 12)
+          exclude.clear()
+          for (let i = 0; i < need; i++) exclude.add(idxs[sel[i]])
+          for (let i = 0; i < jb; i++) exclude.add(jokers[i])
+          exclude.add(k)
+          if (canFillMiddleTop(excluding(cards, exclude), keyB)) return true
+        }
+        return false
+      })
+      if (found) return true
     }
   }
 
-  // ストレートフラッシュ候補: スーツごとにランクの5連続窓（+ホイール）を列挙。
+  // ストレートフラッシュ候補: スーツ×窓。窓内の実カードから keep 枚を使い、
+  // 残り (5-keep) をジョーカーで補う（実カードをあえて外して他の段に回す場合も列挙）。
   for (const suit of ['c', 'd', 'h', 's'] as const) {
     const idxByRank: number[] = []
-    let count = 0
     for (let i = 0; i < n; i++) {
-      if (cards[i].suit === suit) {
-        idxByRank[cards[i].rank] = i
-        count++
-      }
+      const c = cards[i]
+      if (c.rank !== 0 && c.suit === suit) idxByRank[c.rank] = i
     }
-    if (count < 5) continue
     for (let high = 14; high >= 5; high--) {
-      exclude.clear()
-      let ok = true
+      const presentIdx: number[] = []
       for (let d = 0; d < 5; d++) {
         // high=5 のときはホイール（5,4,3,2,A）。
         const r = high - d === 1 ? 14 : high - d
         const i = idxByRank[r]
-        if (i === undefined) {
-          ok = false
-          break
-        }
-        exclude.add(i)
+        if (i !== undefined) presentIdx.push(i)
       }
-      if (!ok) continue
+      const missing = 5 - presentIdx.length
+      if (missing > jokers.length) continue
       const keyB = (HandCategory.StraightFlush << 20) | (high << 16)
-      if (canFillMiddleTop(excluding(cards, exclude), keyB)) return true
+      const maxExtra = Math.min(jokers.length - missing, presentIdx.length)
+      for (let extra = 0; extra <= maxExtra; extra++) {
+        const keep = presentIdx.length - extra
+        const jb = missing + extra
+        const found = findCombo(presentIdx.length, keep, (sel) => {
+          exclude.clear()
+          for (let i = 0; i < keep; i++) exclude.add(presentIdx[sel[i]])
+          for (let i = 0; i < jb; i++) exclude.add(jokers[i])
+          return canFillMiddleTop(excluding(cards, exclude), keyB)
+        })
+        if (found) return true
+      }
     }
   }
 
   return false
 }
 
-/** top トリップスでリステイできるか。 */
+/** top トリップスでリステイできるか（ペア+ジョーカー等も含む）。 */
 function checkViaTop(cards: readonly Card[]): boolean {
-  const n = cards.length
-  const byRank: number[][] = []
-  for (let i = 0; i < n; i++) {
-    const r = cards[i].rank
-    ;(byRank[r] ??= []).push(i)
-  }
-
+  const { byRank, jokers } = indexCards(cards)
   const exclude = new Set<number>()
   for (let r = 14; r >= 2; r--) {
     const idxs = byRank[r]
-    if (!idxs || idxs.length < 3) continue
-    const keyT = (HandCategory.Trips << 20) | (r << 16)
-    // 4枚持ちならどの3枚を top に使うかで残り（スーツ）が変わるため全通り試す。
-    const found = findCombo(idxs.length, 3, (sel) => {
-      exclude.clear()
-      for (let i = 0; i < 3; i++) exclude.add(idxs[sel[i]])
-      return canFillTwoFives(excluding(cards, exclude), keyT)
-    })
-    if (found) return true
+    const have = idxs?.length ?? 0
+    for (let jt = 0; jt <= Math.min(2, jokers.length); jt++) {
+      const need = 3 - jt
+      if (have < need) continue
+      const keyT = (HandCategory.Trips << 20) | (r << 16)
+      // どの実カードを top に使うかで残り（スーツ）が変わるため部分集合を全列挙する。
+      const found = findCombo(have, need, (sel) => {
+        exclude.clear()
+        for (let i = 0; i < need; i++) exclude.add(idxs![sel[i]])
+        for (let i = 0; i < jt; i++) exclude.add(jokers[i])
+        return canFillTwoFives(excluding(cards, exclude), keyT)
+      })
+      if (found) return true
+    }
   }
   return false
 }
@@ -211,6 +237,8 @@ export function canStayFantasyland(cards: readonly Card[]): boolean {
 export interface StayRateOptions {
   iters?: number
   rng?: () => number
+  /** ジョーカー2枚入り（54枚デッキ）から配るか。 */
+  jokers?: boolean
 }
 
 export interface StayRateEstimate {
@@ -235,8 +263,8 @@ export function estimateFantasylandStayRate(
   n: number,
   options: StayRateOptions = {},
 ): StayRateEstimate {
-  const { iters = 100_000, rng = Math.random } = options
-  const deck = makeDeck()
+  const { iters = 100_000, rng = Math.random, jokers = false } = options
+  const deck = makeDeck(jokers)
   let stays = 0
   let viaTop = 0
   let viaBottom = 0

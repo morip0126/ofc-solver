@@ -22,5 +22,6 @@ export function isRedSuit(suit: Suit): boolean {
 }
 
 export function formatCard(card: Card): string {
+  if (card.rank === 0) return '🃏'
   return `${RANK_CHAR[card.rank]}${SUIT_SYMBOL[card.suit]}`
 }

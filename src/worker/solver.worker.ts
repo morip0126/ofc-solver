@@ -42,6 +42,8 @@ export type WorkerRequest =
       dead: string[]
       variantId: VariantId
       iters?: number
+      /** ジョーカー2枚入り（54枚デッキ）でプレイしているか。 */
+      jokers?: boolean
     }
   | {
       id: number
@@ -51,6 +53,7 @@ export type WorkerRequest =
       dead: string[]
       variantId: VariantId
       iters?: number
+      jokers?: boolean
     }
   | { id: number; kind: 'solveFL'; cards: string[]; variantId: VariantId; stayBonus?: number }
   | {
@@ -61,6 +64,7 @@ export type WorkerRequest =
       variantId: VariantId
       iters: number
       opponents: number
+      jokers?: boolean
     }
 
 export type WorkerResponse =
@@ -130,6 +134,7 @@ self.onmessage = (e: MessageEvent<WorkerRequest>) => {
       case 'suggestInitial': {
         const suggestions = suggestInitial5(parseCards(msg.cards), parseCards(msg.dead), variant, {
           iters: msg.iters ?? 120,
+          jokers: msg.jokers,
           onProgress: progressReporter(msg.id),
         })
         post({ id: msg.id, kind: 'suggestions', suggestions: suggestions.slice(0, 5).map(suggestionDTO) })
@@ -141,7 +146,7 @@ self.onmessage = (e: MessageEvent<WorkerRequest>) => {
           parseCards(msg.drawn),
           parseCards(msg.dead),
           variant,
-          { iters: msg.iters ?? 160, onProgress: progressReporter(msg.id) },
+          { iters: msg.iters ?? 160, jokers: msg.jokers, onProgress: progressReporter(msg.id) },
         )
         post({ id: msg.id, kind: 'suggestions', suggestions: suggestions.slice(0, 5).map(suggestionDTO) })
         break
@@ -159,6 +164,7 @@ self.onmessage = (e: MessageEvent<WorkerRequest>) => {
         const ev = estimateEVvsRandom(board, parseCards(msg.dead), variant, {
           iters: msg.iters,
           opponents: msg.opponents,
+          jokers: msg.jokers,
         })
         post({ id: msg.id, kind: 'ev', ev })
         break

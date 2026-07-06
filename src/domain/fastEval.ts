@@ -41,9 +41,165 @@ export function keyCategory(key: number): HandCategory {
 // ランク出現数を数えるスクラッチ（毎回の配列アロケーションを避ける）。
 const cnt = new Uint8Array(15)
 
+// ストレート窓（high=14..6 の5連続 + high=5 のホイール）のランクビットマスク。
+const WINDOW_MASKS: number[] = (() => {
+  const w = new Array<number>(15).fill(0)
+  for (let high = 6; high <= 14; high++) {
+    let m = 0
+    for (let d = 0; d < 5; d++) m |= 1 << (high - d)
+    w[high] = m
+  }
+  w[5] = (1 << 14) | (1 << 5) | (1 << 4) | (1 << 3) | (1 << 2)
+  return w
+})()
+
+// key5Wild 用スクラッチ。
+const wcnt = new Uint8Array(15)
+const natRanks = new Array<number>(5)
+
+/**
+ * ジョーカー（rank=0、j枚）を含む5枚の最強キーを直接構成する。
+ * 「ジョーカーはその段の役を最強にするカード」ルール。強いカテゴリから順に成立判定し、
+ * 成立したカテゴリ内でタイブレーカーを最大化する。evaluator.ts の置換総当たり参照実装との
+ * 同値性は fastEval.test.ts の全数クロスチェックで担保。
+ */
+function key5Wild(cards: readonly Card[], j: number): number {
+  let m = 0
+  let sameSuit = true
+  let suit: string | null = null
+  let rankMask = 0
+  let hasDup = false
+  for (let i = 0; i < 5; i++) {
+    const c = cards[i]
+    if (c.rank === 0) continue
+    if (suit === null) suit = c.suit
+    else if (c.suit !== suit) sameSuit = false
+    wcnt[c.rank]++
+    if (wcnt[c.rank] > 1) hasDup = true
+    rankMask |= 1 << c.rank
+    natRanks[m++] = c.rank
+  }
+  // 降順ソート（m ≤ 4 なので挿入ソートで十分）
+  for (let i = 1; i < m; i++) {
+    const v = natRanks[i]
+    let k = i - 1
+    while (k >= 0 && natRanks[k] < v) {
+      natRanks[k + 1] = natRanks[k]
+      k--
+    }
+    natRanks[k + 1] = v
+  }
+
+  const key = key5WildCore(j, m, sameSuit, rankMask, hasDup)
+  for (let i = 0; i < m; i++) wcnt[natRanks[i]] = 0
+  return key
+}
+
+function key5WildCore(
+  j: number,
+  m: number,
+  sameSuit: boolean,
+  rankMask: number,
+  hasDup: boolean,
+): number {
+  // 1) ストレートフラッシュ: 実カードが同一スートで、ある窓に全て収まる（欠けはジョーカー）。
+  if (sameSuit && !hasDup) {
+    for (let high = 14; high >= 5; high--) {
+      if ((rankMask & ~WINDOW_MASKS[high]) === 0) {
+        return (HandCategory.StraightFlush << 20) | (high << 16)
+      }
+    }
+  }
+  // 2) クアッズ: あるランクの実カード + ジョーカーで4枚（5枚同ランクは作らない）。
+  for (let r = 14; r >= 2; r--) {
+    if (wcnt[r] < 4 - j) continue
+    const jokersLeft = j - Math.max(0, 4 - wcnt[r])
+    let kicker = 0
+    if (jokersLeft > 0) {
+      kicker = r === 14 ? 13 : 14 // 余ったジョーカーが最強キッカーになる
+    } else {
+      for (let i = 0; i < m; i++) {
+        if (natRanks[i] !== r) {
+          kicker = natRanks[i]
+          break
+        }
+      }
+    }
+    return (HandCategory.Quads << 20) | (r << 16) | (kicker << 12)
+  }
+  // 3) フルハウス: j=1 かつ実カードがちょうど2ペア（高いペアをトリップスに）。
+  if (j === 1) {
+    let p1 = 0
+    let p2 = 0
+    for (let r = 14; r >= 2; r--) {
+      if (wcnt[r] === 2) {
+        if (p1 === 0) p1 = r
+        else if (p2 === 0) p2 = r
+      }
+    }
+    if (p1 && p2) return (HandCategory.FullHouse << 20) | (p1 << 16) | (p2 << 12)
+  }
+  // 4) フラッシュ: ジョーカーはスート内の欠けランクの高い方から埋める。
+  if (sameSuit) {
+    let key = HandCategory.Flush << 20
+    let need = j
+    let filled = 0
+    for (let r = 14; r >= 2 && filled < 5; r--) {
+      if (rankMask & (1 << r)) {
+        key |= r << (16 - 4 * filled)
+        filled++
+      } else if (need > 0) {
+        key |= r << (16 - 4 * filled)
+        filled++
+        need--
+      }
+    }
+    return key
+  }
+  // 5) ストレート: 実カードのランクが重複なく、ある窓に全て収まる。
+  if (!hasDup) {
+    for (let high = 14; high >= 5; high--) {
+      if ((rankMask & ~WINDOW_MASKS[high]) === 0) {
+        return (HandCategory.Straight << 20) | (high << 16)
+      }
+    }
+  }
+  // 6) トリップス: あるランクの実カード + ジョーカーで3枚。
+  for (let r = 14; r >= 2; r--) {
+    if (wcnt[r] < 3 - j) continue
+    let k1 = 0
+    let k2 = 0
+    for (let i = 0; i < m; i++) {
+      if (natRanks[i] === r) continue
+      if (k1 === 0) k1 = natRanks[i]
+      else {
+        k2 = natRanks[i]
+        break
+      }
+    }
+    return (HandCategory.Trips << 20) | (r << 16) | (k1 << 12) | (k2 << 8)
+  }
+  // 7) ペア: ここに来るのは j=1 で実カードが全て単独ランクのときのみ
+  //    （j=2 は任意の実カードで必ずトリップス以上になる）。
+  return (
+    (HandCategory.Pair << 20) |
+    (natRanks[0] << 16) |
+    (natRanks[1] << 12) |
+    (natRanks[2] << 8) |
+    (natRanks[3] << 4)
+  )
+}
+
 /** 5枚ハンドを直接 24bit キーに評価する（evaluate5 と同値、アロケーションなし）。 */
 export function key5(cards: readonly Card[]): number {
   const c0 = cards[0], c1 = cards[1], c2 = cards[2], c3 = cards[3], c4 = cards[4]
+  const jokers =
+    (c0.rank === 0 ? 1 : 0) +
+    (c1.rank === 0 ? 1 : 0) +
+    (c2.rank === 0 ? 1 : 0) +
+    (c3.rank === 0 ? 1 : 0) +
+    (c4.rank === 0 ? 1 : 0)
+  if (jokers > 0) return key5Wild(cards, jokers)
   const isFlush =
     c0.suit === c1.suit && c0.suit === c2.suit && c0.suit === c3.suit && c0.suit === c4.suit
 
@@ -98,9 +254,28 @@ export function key5(cards: readonly Card[]): number {
   return (HandCategory.HighCard << 20) | (k1 << 16) | (k2 << 12) | (k3 << 8) | (k4 << 4) | k5
 }
 
-/** 3枚（top）ハンドを直接 24bit キーに評価する（evaluate3 と同値）。 */
+/** 3枚（top）ハンドを直接 24bit キーに評価する（evaluate3 と同値、ジョーカーは最強扱い）。 */
 export function key3(cards: readonly Card[]): number {
   const a = cards[0].rank, b = cards[1].rank, c = cards[2].rank
+  if (a === 0 || b === 0 || c === 0) {
+    // ジョーカーあり: 実カード2枚が同ランクならトリップス、異なれば高い方のペア。
+    // ジョーカー2枚なら残り1枚のトリップス（デッキにジョーカーは2枚しかない）。
+    let x = 0
+    let y = 0
+    if (a !== 0) x = a
+    if (b !== 0) {
+      if (x === 0) x = b
+      else y = b
+    }
+    if (c !== 0) {
+      if (x === 0) x = c
+      else y = c
+    }
+    if (y === 0 || x === y) return (HandCategory.Trips << 20) | (x << 16)
+    const hi = x > y ? x : y
+    const lo = x > y ? y : x
+    return (HandCategory.Pair << 20) | (hi << 16) | (lo << 12)
+  }
   if (a === b && b === c) return (HandCategory.Trips << 20) | (a << 16)
   if (a === b) return (HandCategory.Pair << 20) | (a << 16) | (c << 12)
   if (a === c) return (HandCategory.Pair << 20) | (a << 16) | (b << 12)

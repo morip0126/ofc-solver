@@ -25,6 +25,10 @@
 - ハンド評価 `evaluator.ts`: `HandValue = [category, ...tiebreakers]`。辞書式比較で強弱が決まる。top は 3枚評価。
   これは**参照実装**。ホットパスは `fastEval.ts` の 24bit パックキー（整数比較・アロケーションなし）で動く。
   **高速パスを触ったら、参照実装とのクロスチェックテスト（`fastEval.test.ts` / `solverFast.test.ts`）を必ず維持・更新する。**
+- ジョーカー（54枚デッキ）: `rank: 0` のワイルド2枚（`cards.ts` の `JOKER_CARDS`、ID 52/53、コード "X1"/"X2"）。
+  「その段の役を最強にするカード」として段ごとに独立最大化（5オブアカインドは無し）。参照実装は置換総当たり、
+  高速パスは直接構成（`fastEval.ts` の `key5Wild`）。**ワイルド周りを触ったら `fastEvalWild.test.ts` の
+  全数クロスチェック（1ジョーカー C(52,4) / 2ジョーカー C(52,3)）を必ず通すこと。**
 - ファウル = bottom ≥ middle ≥ top を満たさない配置（`score.ts`）。3人打ちは `scoreMultiEvaluated`（ペアワイズ・ゼロサム）。
 - ソルバー `solver.ts`: `solveBest13`（全探索・決定論的）/ `solveFantasyland`（13〜17枚、リステイ考慮）/
   `estimateEVvsRandom`（`opponents` で複数のランダム相手に対応）/
