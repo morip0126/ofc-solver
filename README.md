@@ -61,6 +61,27 @@ Vite + React + TypeScript。重い計算は Web Worker で実行。
 （`evaluator.ts` + `combinations`）とのクロスチェックテストで同値性を担保しています
 （`fastEval.test.ts`, `solverFast.test.ts`）。
 
+## スマホで使う（GitHub Pages）
+
+デフォルトブランチへの push で GitHub Actions（`.github/workflows/deploy.yml`）が
+テスト → ビルド → GitHub Pages へ自動デプロイします。公開 URL:
+
+```
+https://morip0126.github.io/ofc-solver/
+```
+
+- 初回はリポジトリの Actions が有効であること（Settings → Actions）と、Pages の
+  Source が「GitHub Actions」になっていることを確認（ワークフローが自動で有効化を試みます）。
+- スマホのブラウザで開き、**「ホーム画面に追加」**するとスタンドアロン表示で
+  アプリのように使えます（manifest / アイコン同梱）。
+- 完全にクライアントサイドで動作するためサーバは不要。一度読み込めば計算は端末内で行われます。
+
+開発中に同一 Wi-Fi のスマホから試すには:
+
+```bash
+pnpm dev --host   # 表示される Network の URL をスマホで開く
+```
+
 ## 開発
 
 ```bash

@@ -48,6 +48,19 @@ body {
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
 
+/* モバイル: ダブルタップズームの抑止・タップハイライト除去 */
+button {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.card-picker,
+.row-cards,
+.pool-cards {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
 .app {
   max-width: 560px;
   margin: 0 auto;
