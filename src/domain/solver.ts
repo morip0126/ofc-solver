@@ -227,6 +227,10 @@ function flEntryFromTopKey(topKey: number, variant: Variant): number {
  *     bottom クアッズ以上 {13:5.0%, 14:7.3%, 15:10.0%, 16:13.5%, 17:17.8%}、重複あり）
  * この pStay で再計算した V={14:14.2, 15:19.4, 16:26.7, 17:34.9} は S_FL の測定誤差（±1点程度）
  * の範囲内なので、下のテーブルは従来値を維持している（変更時は CLAUDE.md の EV 検証手順に従うこと）。
+ *
+ * 注意: 本テーブルは標準52枚デッキの実測から導出した値。ジョーカー入り（54枚）は
+ * pStay が大幅に高く（14枚 37.7% 等、flStay.ts 参照）S_FL / S_N も変わるため、
+ * 厳密には別テーブルが必要（未導出・今後の課題）。現状はジョーカー入りでも本テーブルを使う。
  */
 export const DEFAULT_FL_VALUES: Readonly<Record<number, number>> = {
   14: 14.5,
