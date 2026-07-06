@@ -213,8 +213,33 @@ function flEntryFromTopKey(topKey: number, variant: Variant): number {
 
 // ---- ファンタジーランド・ソルバー ---------------------------------------------
 
+/**
+ * FL 突入の期待価値（points）。「次のハンドを通常ハンドの代わりに n 枚の FL として
+ * 打てること」の差分価値で、リステイ連鎖（リステイ後は14枚と仮定）を織り込む:
+ *   Δ(n) = S_FL(n) − S_N,  V(14) = Δ(14)/(1 − pStay(14)),  V(n) = Δ(n) + pStay(n)・V(14)
+ * S_FL / S_N は同一の相手モデル（ランダム13枚のロイヤリティ最善配置）に対する期待得点の
+ * モンテカルロ実測（S_FL: n毎に220〜1600、S_N: 400ハンド）。相手モデル依存の項は差分で相殺される。
+ * 実測: S_N=−8.01, S_FL={14:4.70, 15:8.62, 16:13.75, 17:19.10}, pStay={14:12.3%, 15:14.1%, 16:30.9%, 17:53.6%}
+ */
+export const DEFAULT_FL_VALUES: Readonly<Record<number, number>> = {
+  14: 14.5,
+  15: 18.7,
+  16: 26.2,
+  17: 34.9,
+}
+
+/**
+ * ファウルの追加ペナルティ（points）。ファウルすると 3 段負け + スクープ（≒6点）に加えて
+ * 相手のロイヤリティを献上する。現実的な相手（ヒューリスティック・プレイ相当）の
+ * 非ファウル時平均ロイヤリティ実測 3.51 × 非ファウル率 0.95 を加えた 6 + 3.3 ≈ 9.0。
+ */
+export const DEFAULT_FOUL_WEIGHT = 9.0
+
+/** リステイの目的関数ボーナス既定値 = V(14)（リステイは14枚で継続すると仮定）。 */
+export const DEFAULT_STAY_BONUS = DEFAULT_FL_VALUES[14]
+
 export interface FantasylandOptions {
-  /** リステイ（FL 継続）に与えるボーナス点（目的関数に加算）。 */
+  /** リステイ（FL 継続）に与えるボーナス点（目的関数に加算）。既定は V(14) の実測値。 */
   stayBonus?: number
   topK?: number
 }
@@ -240,7 +265,7 @@ export function solveFantasyland(
 ): FantasylandResult[] {
   const n = cards.length
   if (n < 13 || n > 17) throw new Error(`solveFantasyland expects 13..17 cards, got ${n}`)
-  const { stayBonus = 6, topK = 3 } = options
+  const { stayBonus = DEFAULT_STAY_BONUS, topK = 3 } = options
 
   const fives = prepFives(cards)
   const tops = prepTops(cards)
@@ -412,12 +437,14 @@ interface CompletionBest {
  * 既に置いたカードを固定したまま、freeCards で残りスロットを埋める最善の完成形を全探索で求める。
  * 完成形が13枚になるよう freeCards.length は残りスロット数と一致していなければならない。
  * 非ファウルを優先し、その中でロイヤリティ(+FLボーナス)最大を返す。全てファウルなら最もマシなものを返す。
+ * flValues を渡すと FL 枚数ごとの価値テーブルでボーナスし、無ければ flBonus のフラット加点。
  */
 export function bestCompletion(
   board: Board,
   freeCards: readonly Card[],
   variant: Variant,
   flBonus = 0,
+  flValues?: Readonly<Record<number, number>>,
 ): ScoredArrangement | null {
   const cap = remainingCap(board)
   const nf = freeCards.length
@@ -476,7 +503,11 @@ export function bestCompletion(
         score = -1000
       } else {
         const roys = royaltyBottomKey(botKey) + royaltyMiddleKey(midKey) + royaltyTopKey(topKey)
-        score = roys + (flBonus !== 0 && flEntryFromTopKey(topKey, variant) > 0 ? flBonus : 0)
+        score = roys
+        if (flValues || flBonus !== 0) {
+          const flN = flEntryFromTopKey(topKey, variant)
+          if (flN > 0) score += flValues ? (flValues[flN] ?? 0) : flBonus
+        }
       }
       if (!best || score > best.score) {
         best = { score, topFillMask, midFillMask }
@@ -509,17 +540,26 @@ export function bestCompletion(
 export interface BoardMetric {
   expRoyalty: number
   flProb: number
+  /** FL 突入の期待価値（サンプルごとの V(FL枚数) の平均）。 */
+  flEV: number
   foulProb: number
-  /** 総合スコア = 期待ロイヤリティ + flWeight*FL率 - foulWeight*ファウル率。 */
+  /** 総合スコア = 期待ロイヤリティ + FL期待価値 - foulWeight*ファウル率。 */
   score: number
 }
 
 export interface RankOptions {
   iters?: number
   rng?: () => number
+  /**
+   * FL 枚数 → 期待価値（points）のテーブル。既定は実測の DEFAULT_FL_VALUES。
+   * flWeight を明示指定してテーブルを省略した場合は従来のフラット加点（flWeight×FL率）になる。
+   */
+  flValues?: Readonly<Record<number, number>>
+  /** レガシーのフラット FL ボーナス。flValues 指定時は無視。 */
   flWeight?: number
+  /** ファウル率へのペナルティ。既定は実測の DEFAULT_FOUL_WEIGHT。 */
   foulWeight?: number
-  /** 補完探索中に FL 配列を優先させる度合い。 */
+  /** 補完探索中の FL 加点（レガシー・フラット値）。flValues 指定/既定時は不使用。 */
   completionFlBonus?: number
 }
 
@@ -536,10 +576,18 @@ export function evaluateBoard(
   const {
     iters = 100,
     rng = Math.random,
-    flWeight = 6,
-    foulWeight = 12,
-    completionFlBonus = 8,
+    flWeight,
+    foulWeight = DEFAULT_FOUL_WEIGHT,
+    completionFlBonus,
   } = options
+  // flWeight を明示指定してテーブル省略ならレガシー動作（フラット加点）。それ以外は実測テーブル。
+  const flValues =
+    options.flValues ?? (flWeight !== undefined ? undefined : DEFAULT_FL_VALUES)
+  const flFlat = flWeight ?? 6
+  const flValueOf = (flCards: number): number =>
+    flCards > 0 ? (flValues ? (flValues[flCards] ?? 0) : flFlat) : 0
+  const completionBonus = completionFlBonus ?? (flValues ? 0 : 8)
+
   const placed = boardCards(board)
   const need = 13 - placed.length
   if (need < 0) throw new Error(`board has more than 13 cards: ${placed.length}`)
@@ -548,33 +596,45 @@ export function evaluateBoard(
     const evaluated = evaluateArrangement(board as Arrangement)
     const foulProb = evaluated.fouled ? 1 : 0
     const expRoyalty = evaluated.fouled ? 0 : royaltiesTotal(evaluated)
-    const flProb = fantasylandCards(evaluated, variant) > 0 ? 1 : 0
-    return { expRoyalty, flProb, foulProb, score: expRoyalty + flWeight * flProb - foulWeight * foulProb }
+    const flCards = evaluated.fouled ? 0 : fantasylandCards(evaluated, variant)
+    const flEV = flValueOf(flCards)
+    return {
+      expRoyalty,
+      flProb: flCards > 0 ? 1 : 0,
+      flEV,
+      foulProb,
+      score: expRoyalty + flEV - foulWeight * foulProb,
+    }
   }
 
   const deck = remainingDeck([...placed, ...dead])
   let royaltySum = 0
   let flCount = 0
+  let flValueSum = 0
   let foulCount = 0
   let n = 0
   for (let i = 0; i < iters; i++) {
     shuffle(deck, rng)
     const future = deck.slice(0, need)
-    const best = bestCompletion(board, future, variant, completionFlBonus)
+    const best = bestCompletion(board, future, variant, completionBonus, flValues)
     if (!best) continue
     n++
     if (best.evaluated.fouled) {
       foulCount++
     } else {
       royaltySum += best.royalties
-      if (best.fantasylandCards > 0) flCount++
+      if (best.fantasylandCards > 0) {
+        flCount++
+        flValueSum += flValueOf(best.fantasylandCards)
+      }
     }
   }
 
   const expRoyalty = n > 0 ? royaltySum / n : 0
   const flProb = n > 0 ? flCount / n : 0
+  const flEV = n > 0 ? flValueSum / n : 0
   const foulProb = n > 0 ? foulCount / n : 0
-  return { expRoyalty, flProb, foulProb, score: expRoyalty + flWeight * flProb - foulWeight * foulProb }
+  return { expRoyalty, flProb, flEV, foulProb, score: expRoyalty + flEV - foulWeight * foulProb }
 }
 
 export interface BoardSuggestion extends BoardMetric {
