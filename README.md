@@ -54,7 +54,9 @@ Vite + React + TypeScript。重い計算は Web Worker で実行。
 - `scoreMultiEvaluated(players, variant)` — 3人打ちのペアワイズ採点（ゼロサム）。
 - `canStayFantasyland(cards)` / `estimateFantasylandStayRate(n)` — FL 配牌がリステイ可能かの
   厳密判定（クアッズ/SF/トリップス候補に特化した枝刈り、1ハンド平均 ~0.1ms）と、
-  それを使った継続率 pStay(n) のモンテカルロ推定。
+  それを使った継続率 pStay(n) のモンテカルロ推定。標準52枚デッキでの実測（100万ハンド）:
+  14枚 10.5% / 15枚 19.5% / 16枚 34.7% / 17枚 54.8%。ジョーカー2枚入り（54枚）ルームは
+  大幅に高くなる（参考実測: 37.7% / 50.3% / 63.9% / 77.9%、`flStay.ts` のコメント参照）。
 
 `suggestInitial5` / `suggestStreet` は「以降の引きは最適に配置できる」という**楽観的補完**に基づく
 ヒューリスティック。相対的な手の優劣付けには機能しますが、相手を考慮した厳密な逐次最適化ではありません。
