@@ -591,55 +591,56 @@ export default function App() {
               {pool.length}/{expectedDraw}
             </span>
           </div>
-          {pool.length < expectedDraw && (
-            <p className="hint">{t(lang, 'drawPrompt', { n: expectedDraw - pool.length })}</p>
-          )}
-          {pool.length > 0 && (
-            <div className="pool-cards">
-              {pool.map((c) => {
-                const id = cardId(c)
-                const dest = assign[id]
-                return (
-                  <div className="pool-card" key={id}>
-                    <button type="button" className="pool-card-btn" onClick={() => onPickerToggle(c)}>
-                      <CardGlyph card={c} />
-                    </button>
-                    <div className="dest-btns">
-                      {ROWS.map((r) => (
-                        <button
-                          type="button"
-                          key={r}
-                          className={dest === r ? 'on' : ''}
-                          onClick={() => setDest(id, r)}
-                        >
-                          {t(lang, r as MessageKey).slice(0, 1)}
-                        </button>
-                      ))}
-                      {heroCount > 0 && (
-                        <button
-                          type="button"
-                          className={`dest-discard ${dest === 'discard' ? 'on' : ''}`}
-                          onClick={() => setDest(id, 'discard')}
-                        >
-                          {t(lang, 'discardLabel').slice(0, 1)}
-                        </button>
-                      )}
-                    </div>
+          <p className="hint pool-hint">
+            {pool.length < expectedDraw
+              ? t(lang, 'drawPrompt', { n: expectedDraw - pool.length })
+              : t(lang, heroCount === 0 ? 'assignHintInitial' : 'assignHintStreet')}
+          </p>
+          {/* ドロー枚数分の固定グリッド。置き先ボタンは全カード選択後まで
+              visibility:hidden でスペースだけ確保し、選択前後でレイアウトを変えない。 */}
+          <div
+            className="pool-cards"
+            style={{ gridTemplateColumns: `repeat(${expectedDraw}, minmax(0, 1fr))` }}
+          >
+            {pool.map((c) => {
+              const id = cardId(c)
+              const dest = assign[id]
+              const showDest = pool.length === expectedDraw
+              return (
+                <div className="pool-card" key={id}>
+                  <button type="button" className="pool-card-btn" onClick={() => onPickerToggle(c)}>
+                    <CardGlyph card={c} />
+                  </button>
+                  <div className="dest-btns" style={{ visibility: showDest ? 'visible' : 'hidden' }}>
+                    {ROWS.map((r) => (
+                      <button
+                        type="button"
+                        key={r}
+                        className={dest === r ? 'on' : ''}
+                        disabled={!showDest}
+                        onClick={() => setDest(id, r)}
+                      >
+                        {t(lang, r as MessageKey).slice(0, 1)}
+                      </button>
+                    ))}
+                    {heroCount > 0 && (
+                      <button
+                        type="button"
+                        className={`dest-discard ${dest === 'discard' ? 'on' : ''}`}
+                        disabled={!showDest}
+                        onClick={() => setDest(id, 'discard')}
+                      >
+                        {t(lang, 'discardLabel').slice(0, 1)}
+                      </button>
+                    )}
                   </div>
-                )
-              })}
-            </div>
-          )}
-          {pool.length === expectedDraw && (
-            <>
-              <p className="hint">
-                {t(lang, heroCount === 0 ? 'assignHintInitial' : 'assignHintStreet')}
-              </p>
-              <button type="button" className="primary-btn" disabled={!commitState.valid} onClick={commit}>
-                {t(lang, 'commit')}
-              </button>
-            </>
-          )}
+                </div>
+              )
+            })}
+          </div>
+          <button type="button" className="primary-btn" disabled={!commitState.valid} onClick={commit}>
+            {t(lang, 'commit')}
+          </button>
         </section>
       )}
 
