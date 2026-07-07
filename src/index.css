@@ -172,8 +172,10 @@ button {
   flex-wrap: wrap;
 }
 
-.panel-head.selectable {
+/* タップで選択先を切り替えられる領域（行・パネル全域） */
+.selectable {
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .panel-title {

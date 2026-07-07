@@ -581,13 +581,11 @@ export default function App() {
       )}
 
       {mode === 'play' && heroCount < 13 && (
-        <section className={`panel pool-panel ${target.kind === 'pool' ? 'active' : ''}`}>
-          <div
-            className="panel-head selectable"
-            onClick={() => setTarget({ kind: 'pool' })}
-            role="button"
-            tabIndex={0}
-          >
+        <section
+          className={`panel pool-panel selectable ${target.kind === 'pool' ? 'active' : ''}`}
+          onClick={() => setTarget({ kind: 'pool' })}
+        >
+          <div className="panel-head" role="button" tabIndex={0}>
             <span className="panel-title">{t(lang, 'pool')}</span>
             <span className="street-label">
               {pool.length}/{expectedDraw}
@@ -721,13 +719,11 @@ export default function App() {
       )}
 
       {mode === 'fl' && (
-        <section className={`panel pool-panel ${target.kind === 'pool' ? 'active' : ''}`}>
-          <div
-            className="panel-head selectable"
-            onClick={() => setTarget({ kind: 'pool' })}
-            role="button"
-            tabIndex={0}
-          >
+        <section
+          className={`panel pool-panel selectable ${target.kind === 'pool' ? 'active' : ''}`}
+          onClick={() => setTarget({ kind: 'pool' })}
+        >
+          <div className="panel-head" role="button" tabIndex={0}>
             <span className="panel-title">{t(lang, 'poolFL')}</span>
             <span className="street-label">{pool.length}/13–17</span>
           </div>
@@ -844,7 +840,11 @@ function BoardRow({
   compact?: boolean
 }) {
   return (
-    <div className={`board-row ${active ? 'active' : ''} ${compact ? 'compact' : ''}`}>
+    // 行全体をタップで選択先にできるようにする（カード自体のタップは取り除き操作を優先）。
+    <div
+      className={`board-row selectable ${active ? 'active' : ''} ${compact ? 'compact' : ''}`}
+      onClick={onSelect}
+    >
       <button type="button" className="board-row-target" onClick={onSelect}>
         <span className="row-label">{t(lang, row as MessageKey)}</span>
         <span className="row-hand">{rowHandText(lang, row, cards)}</span>
@@ -855,7 +855,10 @@ function BoardRow({
             type="button"
             key={cardId(c)}
             className="row-card-btn"
-            onClick={() => onRemove(c)}
+            onClick={(e) => {
+              e.stopPropagation()
+              onRemove(c)
+            }}
           >
             <CardGlyph card={c} size={compact ? 'sm' : 'md'} />
           </button>
