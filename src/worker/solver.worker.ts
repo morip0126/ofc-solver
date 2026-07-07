@@ -3,6 +3,8 @@
 import {
   type Board,
   type BoardSuggestion,
+  DEFAULT_STAY_BONUS,
+  DEFAULT_STAY_BONUS_JOKER,
   type FantasylandResult,
   type VariantId,
   VARIANTS,
@@ -42,6 +44,8 @@ export type WorkerRequest =
       dead: string[]
       variantId: VariantId
       iters?: number
+      /** ジョーカー2枚入り（54枚デッキ）でプレイしているか。 */
+      jokers?: boolean
     }
   | {
       id: number
@@ -51,8 +55,16 @@ export type WorkerRequest =
       dead: string[]
       variantId: VariantId
       iters?: number
+      jokers?: boolean
     }
-  | { id: number; kind: 'solveFL'; cards: string[]; variantId: VariantId; stayBonus?: number }
+  | {
+      id: number
+      kind: 'solveFL'
+      cards: string[]
+      variantId: VariantId
+      stayBonus?: number
+      jokers?: boolean
+    }
   | {
       id: number
       kind: 'ev'
@@ -61,6 +73,7 @@ export type WorkerRequest =
       variantId: VariantId
       iters: number
       opponents: number
+      jokers?: boolean
     }
 
 export type WorkerResponse =
@@ -130,6 +143,7 @@ self.onmessage = (e: MessageEvent<WorkerRequest>) => {
       case 'suggestInitial': {
         const suggestions = suggestInitial5(parseCards(msg.cards), parseCards(msg.dead), variant, {
           iters: msg.iters ?? 120,
+          jokers: msg.jokers,
           onProgress: progressReporter(msg.id),
         })
         post({ id: msg.id, kind: 'suggestions', suggestions: suggestions.slice(0, 5).map(suggestionDTO) })
@@ -141,14 +155,16 @@ self.onmessage = (e: MessageEvent<WorkerRequest>) => {
           parseCards(msg.drawn),
           parseCards(msg.dead),
           variant,
-          { iters: msg.iters ?? 160, onProgress: progressReporter(msg.id) },
+          { iters: msg.iters ?? 160, jokers: msg.jokers, onProgress: progressReporter(msg.id) },
         )
         post({ id: msg.id, kind: 'suggestions', suggestions: suggestions.slice(0, 5).map(suggestionDTO) })
         break
       }
       case 'solveFL': {
+        // リステイボーナス既定値 = 実測した V(14)（デッキに応じて 52枚用 / ジョーカー入り用）。
         const results = solveFantasyland(parseCards(msg.cards), variant, {
-          stayBonus: msg.stayBonus ?? 6,
+          stayBonus:
+            msg.stayBonus ?? (msg.jokers ? DEFAULT_STAY_BONUS_JOKER : DEFAULT_STAY_BONUS),
           topK: 3,
         })
         post({ id: msg.id, kind: 'fl', results: results.map(flDTO) })
@@ -159,6 +175,7 @@ self.onmessage = (e: MessageEvent<WorkerRequest>) => {
         const ev = estimateEVvsRandom(board, parseCards(msg.dead), variant, {
           iters: msg.iters,
           opponents: msg.opponents,
+          jokers: msg.jokers,
         })
         post({ id: msg.id, kind: 'ev', ev })
         break

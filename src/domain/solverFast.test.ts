@@ -11,6 +11,7 @@ import {
 } from './score'
 import { NORMAL, ULTIMATE } from './variants'
 import type { Variant } from './variants'
+import { key3, key5, royaltyBottomKey, royaltyMiddleKey, royaltyTopKey } from './fastEval'
 import { estimateEVvsRandom, solveBest13, solveFantasyland } from './solver'
 
 // 高速化した solveBest13 / solveFantasyland を、素朴な参照実装（combinations +
@@ -50,7 +51,61 @@ describe('solveBest13 (fast) vs reference brute force', () => {
       }
     }
   })
+
+  it('finds the same best royalties on joker-deck 13-card hands (key-based reference)', () => {
+    // 探索（枝刈り・列挙）の正しさ検証。行評価のワイルド同値性は fastEvalWild.test.ts で
+    // 全数証明済みなので、ここではキーベースの素朴な全列挙を参照にする。
+    const rng = mulberry32(778)
+    const deck = makeDeck(true)
+    for (let i = 0; i < 6; i++) {
+      shuffle(deck, rng)
+      const hand = deck.slice(0, 13)
+      const want = i % 2 === 0 ? 2 : 1
+      for (let w = 0; w < want; w++) {
+        const j = { rank: 0, suit: w === 0 ? 'c' : 'd' } as Card
+        if (hand.some((c) => c.rank === 0 && c.suit === j.suit)) continue
+        let slot = 0
+        while (hand[slot].rank === 0) slot++
+        hand[slot] = j
+      }
+      const fast = solveBest13(hand, NORMAL, { topK: 1 })[0]
+      const ref = referenceBestRoyaltiesByKeys(hand)
+      expect(fast.evaluated.fouled).toBe(false)
+      expect(fast.royalties).toBe(ref)
+    }
+  })
+
+  it('matches the full evaluator reference on a 1-joker hand', () => {
+    // 置換総当たりの参照実装（evaluator.ts）との突き合わせは重いので1ハンドに絞る。
+    const rng = mulberry32(779)
+    const deck = makeDeck()
+    shuffle(deck, rng)
+    const hand = [...deck.slice(0, 12), { rank: 0, suit: 'c' } as Card]
+    const fast = solveBest13(hand, NORMAL, { topK: 1 })[0]
+    const ref = referenceBestObjective(hand, NORMAL, 0)
+    expect(fast.evaluated.fouled).toBe(false)
+    expect(fast.royalties).toBe(ref)
+  }, 120_000)
 })
+
+/** キーベースの素朴な全列挙（ワイルド対応の key3/key5/royalty*Key を使う参照）。 */
+function referenceBestRoyaltiesByKeys(cards: readonly Card[]): number {
+  let best = -1
+  for (const top of combinations(cards, 3)) {
+    const kT = key3(top)
+    const rest10 = without(cards, top)
+    for (const middle of combinations(rest10, 5)) {
+      const kM = key5(middle)
+      if (kM < kT) continue
+      const bottom = without(rest10, middle)
+      const kB = key5(bottom)
+      if (kB < kM) continue
+      const roys = royaltyBottomKey(kB) + royaltyMiddleKey(kM) + royaltyTopKey(kT)
+      if (roys > best) best = roys
+    }
+  }
+  return best
+}
 
 describe('solveFantasyland', () => {
   it('matches leave-one-out solveBest13 on 14-card hands', () => {

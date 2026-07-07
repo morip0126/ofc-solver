@@ -11,6 +11,9 @@ const messages = {
   variant: { ja: '種類', en: 'Variant' },
   variantNormal: { ja: 'ノーマル', en: 'Normal' },
   variantUltimate: { ja: 'アルティメット', en: 'Ultimate' },
+  deck: { ja: 'デッキ', en: 'Deck' },
+  deck52: { ja: '52枚', en: '52 cards' },
+  deck54: { ja: '54枚（ジョーカー入り）', en: '54 (jokers)' },
   players: { ja: '人数', en: 'Players' },
   playersHU: { ja: '2人', en: '2 (HU)' },
   players3: { ja: '3人', en: '3' },
@@ -92,8 +95,8 @@ const messages = {
   stay: { ja: 'リステイ', en: 'Stays' },
   stayNo: { ja: 'リステイなし', en: 'No re-stay' },
   flHint: {
-    ja: '目的値 = ロイヤリティ + リステイボーナス(6)。ファウルしない配置のみ。',
-    en: 'Objective = royalties + re-stay bonus (6). Non-fouling arrangements only.',
+    ja: '目的値 = ロイヤリティ + リステイボーナス({bonus} = 実測したFL継続の期待価値)ファウルしない配置のみ。',
+    en: 'Objective = royalties + re-stay bonus ({bonus}, the measured EV of staying). Non-fouling arrangements only.',
   },
 
   noValid: { ja: '非ファウルの配列が見つかりません', en: 'No non-fouling arrangement found' },

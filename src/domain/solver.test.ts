@@ -3,11 +3,14 @@ import { type Card, cardId, parseCards } from './cards'
 import { mulberry32 } from './combinatorics'
 import { HandCategory, categoryOf } from './evaluator'
 import type { Arrangement } from './score'
-import { NORMAL } from './variants'
+import { NORMAL, ULTIMATE } from './variants'
 import {
   type Board,
+  DEFAULT_FL_VALUES,
+  DEFAULT_FL_VALUES_JOKER,
   bestCompletion,
   estimateEVvsRandom,
+  evaluateBoard,
   generateStreetBoards,
   solveBest13,
   suggestStreet,
@@ -113,5 +116,26 @@ describe('estimateEVvsRandom', () => {
     // ファウルは相手が何であれ必ず失点するので、少数でも符号は安定する。
     const evFoul = estimateEVvsRandom(fouled, [], NORMAL, { iters: 4, rng: mulberry32(1) })
     expect(evFoul).toBeLessThan(0)
+  })
+})
+
+describe('evaluateBoard FL value table selection', () => {
+  // 完成盤面（top QQ で FL 突入、ULTIMATE なら14枚）の flEV が、
+  // デッキに応じた実測テーブルの値になること。
+  const board: Board = {
+    top: parseCards('Qs Qh 2c'),
+    middle: parseCards('Ac Ad 5h 6s 8c'),
+    bottom: parseCards('Kc Kd 9h 9s 7d'),
+  }
+
+  it('uses the 52-card table by default', () => {
+    const m = evaluateBoard(board, [], ULTIMATE)
+    expect(m.foulProb).toBe(0)
+    expect(m.flEV).toBe(DEFAULT_FL_VALUES[14])
+  })
+
+  it('uses the joker table when jokers=true', () => {
+    const m = evaluateBoard(board, [], ULTIMATE, { jokers: true })
+    expect(m.flEV).toBe(DEFAULT_FL_VALUES_JOKER[14])
   })
 })

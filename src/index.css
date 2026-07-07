@@ -617,3 +617,12 @@ button {
   opacity: 0.28;
   cursor: default;
 }
+
+/* ジョーカー（ワイルド）: 絵文字1つを大きめに表示 */
+.picker-cell.joker .rank {
+  font-size: 15px;
+}
+
+.card-glyph.joker {
+  line-height: 1;
+}

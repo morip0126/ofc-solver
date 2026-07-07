@@ -3,8 +3,12 @@
 //
 // HandValue は [category, ...tiebreakers] という配列で、辞書式に比較すれば強さ順になる。
 // top(3枚) は HighCard / Pair / Trips のみを取り得る（OFC の top ではストレート・フラッシュは役にならない）。
+//
+// ジョーカー（ワイルド、rank=0）は「その段の役を最強にするカード」として扱う。
+// ここでは 52 枚への置換を総当たりして最強を取る参照実装（正しさ優先・低速）。
+// ホットパスは fastEval.ts の直接構成アルゴリズムで、両者の同値性はテストで担保する。
 
-import type { Card, Rank } from './cards'
+import { type Card, type Rank, cardId, isJoker, makeDeck } from './cards'
 
 export enum HandCategory {
   HighCard = 0,
@@ -45,10 +49,52 @@ function straightHigh5(ranks: Rank[]): number {
   return 0
 }
 
-/** 5枚ハンドを評価する。 */
+/**
+ * ジョーカーを（ハンド内の実カードと重複しない）52枚の候補へ置換し、最強の値を返す。
+ * 置換候補が2枚のときは相異なる2枚の組み合わせを総当たりする。
+ */
+function bestWildSubstitution(
+  cards: readonly Card[],
+  evalNatural: (cs: readonly Card[]) => HandValue,
+): HandValue {
+  const naturals = cards.filter((c) => !isJoker(c))
+  const jokers = cards.length - naturals.length
+  const present = new Set(naturals.map(cardId))
+  const subs = makeDeck().filter((c) => !present.has(cardId(c)))
+  const buf = naturals.slice()
+  buf.length = cards.length
+  let best: HandValue | null = null
+  const consider = (v: HandValue) => {
+    if (!best || compareHand(v, best) > 0) best = v
+  }
+  if (jokers === 1) {
+    for (const s of subs) {
+      buf[naturals.length] = s
+      consider(evalNatural(buf))
+    }
+  } else if (jokers === 2) {
+    for (let i = 0; i < subs.length; i++) {
+      for (let k = i + 1; k < subs.length; k++) {
+        buf[naturals.length] = subs[i]
+        buf[naturals.length + 1] = subs[k]
+        consider(evalNatural(buf))
+      }
+    }
+  } else {
+    throw new Error(`unsupported joker count: ${jokers}`)
+  }
+  return best!
+}
+
+/** 5枚ハンドを評価する（ジョーカーは置換総当たりで最強扱い）。 */
 export function evaluate5(cards: readonly Card[]): HandValue {
   if (cards.length !== 5) throw new Error(`evaluate5 expects 5 cards, got ${cards.length}`)
-  const ranks = cards.map((c) => c.rank)
+  if (cards.some(isJoker)) return bestWildSubstitution(cards, evaluate5Natural)
+  return evaluate5Natural(cards)
+}
+
+function evaluate5Natural(cards: readonly Card[]): HandValue {
+  const ranks = cards.map((c) => c.rank) as Rank[]
   const suits = cards.map((c) => c.suit)
   const isFlush = suits.every((s) => s === suits[0])
   const sh = straightHigh5(ranks)
@@ -75,7 +121,12 @@ export function evaluate5(cards: readonly Card[]): HandValue {
 /** 3枚（top）ハンドを評価する。取り得るのは HighCard / Pair / Trips のみ。 */
 export function evaluate3(cards: readonly Card[]): HandValue {
   if (cards.length !== 3) throw new Error(`evaluate3 expects 3 cards, got ${cards.length}`)
-  const ranks = cards.map((c) => c.rank)
+  if (cards.some(isJoker)) return bestWildSubstitution(cards, evaluate3Natural)
+  return evaluate3Natural(cards)
+}
+
+function evaluate3Natural(cards: readonly Card[]): HandValue {
+  const ranks = cards.map((c) => c.rank) as Rank[]
   const { orderedRanks, counts } = rankCounts(ranks)
   const ranksDesc = ranks.slice().sort((a, b) => b - a)
 

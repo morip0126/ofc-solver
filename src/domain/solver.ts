@@ -219,7 +219,17 @@ function flEntryFromTopKey(topKey: number, variant: Variant): number {
  *   Δ(n) = S_FL(n) − S_N,  V(14) = Δ(14)/(1 − pStay(14)),  V(n) = Δ(n) + pStay(n)・V(14)
  * S_FL / S_N は同一の相手モデル（ランダム13枚のロイヤリティ最善配置）に対する期待得点の
  * モンテカルロ実測（S_FL: n毎に220〜1600、S_N: 400ハンド）。相手モデル依存の項は差分で相殺される。
- * 実測: S_N=−8.01, S_FL={14:4.70, 15:8.62, 16:13.75, 17:19.10}, pStay={14:12.3%, 15:14.1%, 16:30.9%, 17:53.6%}
+ * 実測: S_N=−8.01, S_FL={14:4.70, 15:8.62, 16:13.75, 17:19.10}
+ * pStay は flStay.ts の厳密なリステイ可能性判定 × 各100万ハンドの実測（95%CI ±0.1%、
+ * 再計測は flStayRate.test.ts）:
+ *   pStay={13:5.9%, 14:10.5%, 15:19.5%, 16:34.7%, 17:54.8%}
+ *   （経路の内訳: top トリップス {13:1.1%, 14:4.2%, 15:12.4%, 16:28.1%, 17:49.9%} /
+ *     bottom クアッズ以上 {13:5.0%, 14:7.3%, 15:10.0%, 16:13.5%, 17:17.8%}、重複あり）
+ * この pStay で再計算した V={14:14.2, 15:19.4, 16:26.7, 17:34.9} は S_FL の測定誤差（±1点程度）
+ * の範囲内なので、下のテーブルは従来値を維持している（変更時は CLAUDE.md の EV 検証手順に従うこと）。
+ *
+ * 注意: 本テーブルは標準52枚デッキ用。ジョーカー入り（54枚）は pStay が大幅に高いため
+ * 専用の DEFAULT_FL_VALUES_JOKER を使う（evaluateBoard が jokers オプションで自動選択）。
  */
 export const DEFAULT_FL_VALUES: Readonly<Record<number, number>> = {
   14: 14.5,
@@ -235,8 +245,32 @@ export const DEFAULT_FL_VALUES: Readonly<Record<number, number>> = {
  */
 export const DEFAULT_FOUL_WEIGHT = 9.0
 
+/**
+ * ジョーカー2枚入り（54枚デッキ）用の FL 期待価値。導出方法は DEFAULT_FL_VALUES と同一
+ * （計測ランナー: flValueRate.test.ts。同ランナーは52枚でも既存値をほぼ再現することを確認済み）。
+ * ジョーカー入りは pStay が高くリステイ連鎖が長いため、FL の価値が大幅に大きい。
+ * 実測（S_N: 400ハンド、S_FL: n毎に320〜1200、相手8/6ドロー平均で分散低減）:
+ *   S_N=−8.17±0.44, S_FL={14:4.54, 15:10.35, 16:15.58, 17:19.94},
+ *   pStay={14:37.7%, 15:49.7%, 16:63.9%, 17:77.7%}（flStay.ts の100万ハンド実測）
+ *   → Δ={14:12.71, 15:18.52, 16:23.75, 17:28.11}, V(14)=Δ/(1−p14)=20.4（SE≈±0.9）
+ * 重み反復の収束確認: 本テーブル組み込み後に S_N を再計測（600ハンド）すると −7.97±0.40 で、
+ * V の再計算値 {14:20.1, 15:28.3, 16:36.4, 17:43.5} は現行値と誤差内（1反復で収束）。
+ * EV 検証（flValueAB.test.ts、同一配牌1000ハンドのペア比較、52枚用テーブル流用との対比）:
+ *   ΔJ = +1.74±0.46 点/ハンド（p<0.001）で改善を確認。純対戦スコアは +0.06±0.19 と悪化なし、
+ *   FL突入 24.9%→30.6%（ファウル 9.9%→13.4% は突入増の対価として見合う）。
+ */
+export const DEFAULT_FL_VALUES_JOKER: Readonly<Record<number, number>> = {
+  14: 20.4,
+  15: 28.7,
+  16: 36.8,
+  17: 44.0,
+}
+
 /** リステイの目的関数ボーナス既定値 = V(14)（リステイは14枚で継続すると仮定）。 */
 export const DEFAULT_STAY_BONUS = DEFAULT_FL_VALUES[14]
+
+/** ジョーカー入りのリステイボーナス既定値 = ジョーカー入りの V(14)。 */
+export const DEFAULT_STAY_BONUS_JOKER = DEFAULT_FL_VALUES_JOKER[14]
 
 export interface FantasylandOptions {
   /** リステイ（FL 継続）に与えるボーナス点（目的関数に加算）。既定は V(14) の実測値。 */
@@ -349,6 +383,8 @@ export interface EVOptions {
   opponents?: number
   /** 相手の配置ポリシー（既定: ロイヤリティ最善の全探索）。 */
   opponentPolicy?: (cards: Card[], variant: Variant) => EvaluatedArrangement | null
+  /** ジョーカー2枚入り（54枚デッキ）でプレイしているか。 */
+  jokers?: boolean
 }
 
 function bestRoyaltyOpponent(cards: Card[], variant: Variant): EvaluatedArrangement | null {
@@ -367,11 +403,16 @@ export function estimateEVvsRandom(
   variant: Variant,
   options: EVOptions = {},
 ): number {
-  const { iters = 200, rng = Math.random, opponents = 1, opponentPolicy = bestRoyaltyOpponent } =
-    options
+  const {
+    iters = 200,
+    rng = Math.random,
+    opponents = 1,
+    opponentPolicy = bestRoyaltyOpponent,
+    jokers = false,
+  } = options
   const mine = evaluateArrangement(arrangement)
   const used = [...arrangement.top, ...arrangement.middle, ...arrangement.bottom, ...dead]
-  const deck = remainingDeck(used)
+  const deck = remainingDeck(used, jokers)
   if (deck.length < 13 * opponents) {
     throw new Error(`not enough cards for ${opponents} random opponents (deck=${deck.length})`)
   }
@@ -561,6 +602,8 @@ export interface RankOptions {
   foulWeight?: number
   /** 補完探索中の FL 加点（レガシー・フラット値）。flValues 指定/既定時は不使用。 */
   completionFlBonus?: number
+  /** ジョーカー2枚入り（54枚デッキ）でプレイしているか。 */
+  jokers?: boolean
 }
 
 /**
@@ -579,10 +622,13 @@ export function evaluateBoard(
     flWeight,
     foulWeight = DEFAULT_FOUL_WEIGHT,
     completionFlBonus,
+    jokers = false,
   } = options
-  // flWeight を明示指定してテーブル省略ならレガシー動作（フラット加点）。それ以外は実測テーブル。
+  // flWeight を明示指定してテーブル省略ならレガシー動作（フラット加点）。それ以外は実測テーブル
+  // （デッキに応じて 52枚用 / ジョーカー入り用を選ぶ）。
   const flValues =
-    options.flValues ?? (flWeight !== undefined ? undefined : DEFAULT_FL_VALUES)
+    options.flValues ??
+    (flWeight !== undefined ? undefined : jokers ? DEFAULT_FL_VALUES_JOKER : DEFAULT_FL_VALUES)
   const flFlat = flWeight ?? 6
   const flValueOf = (flCards: number): number =>
     flCards > 0 ? (flValues ? (flValues[flCards] ?? 0) : flFlat) : 0
@@ -607,7 +653,7 @@ export function evaluateBoard(
     }
   }
 
-  const deck = remainingDeck([...placed, ...dead])
+  const deck = remainingDeck([...placed, ...dead], jokers)
   let royaltySum = 0
   let flCount = 0
   let flValueSum = 0
