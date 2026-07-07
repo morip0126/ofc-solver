@@ -313,11 +313,13 @@ button {
 }
 
 /* --- pool --- */
+/* ドロー枚数分の固定グリッド（列数は inline style で指定）。
+   カード+置き先ボタンの1行分を常に確保し、選択の進行でパネルの高さが変わらないようにする。 */
 .pool-cards {
-  display: flex;
+  display: grid;
   gap: 8px;
-  flex-wrap: wrap;
   margin-bottom: 8px;
+  min-height: 62px;
 }
 
 .pool-card {
@@ -325,6 +327,7 @@ button {
   flex-direction: column;
   align-items: center;
   gap: 4px;
+  min-width: 0;
 }
 
 .pool-card-btn {
@@ -334,32 +337,27 @@ button {
   cursor: pointer;
 }
 
-.dest-btns {
-  display: flex;
-  gap: 2px;
-}
-
-.dest-btns button {
-  border: 1px solid var(--border);
-  background: var(--panel);
-  color: var(--muted);
+/* 割当先バッジ（ト/ミ/ボ、自動捨て札は 捨）。非表示時もスペースを確保する。 */
+.dest-badge {
+  min-width: 22px;
+  text-align: center;
   border-radius: 5px;
-  min-width: 24px;
   padding: 3px 4px;
   font-size: 11px;
   font-weight: 700;
-  cursor: pointer;
-}
-
-.dest-btns button.on {
+  line-height: 1;
   background: var(--accent);
-  border-color: var(--accent);
   color: var(--accent-contrast);
 }
 
-.dest-btns button.dest-discard.on {
+.dest-badge.discard {
   background: var(--neg);
-  border-color: var(--neg);
+}
+
+/* ドロー中/確定待ちでヒント文が入れ替わっても高さが動かないよう2行分を確保 */
+.pool-hint {
+  line-height: 1.4;
+  min-height: 2.8em;
 }
 
 .primary-btn {

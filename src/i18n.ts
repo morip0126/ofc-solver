@@ -42,12 +42,12 @@ const messages = {
   handComplete: { ja: '完成', en: 'Complete' },
   drawPrompt: { ja: 'ドローをあと{n}枚選んでください', en: 'Pick {n} more drawn card(s)' },
   assignHintInitial: {
-    ja: '5枚すべての置き先を選んで確定（推奨手からも選べます）',
-    en: 'Assign all 5 cards to rows, then confirm (or apply a suggestion)',
+    ja: '置き先の段をタップで選択し、カードをタップで割当てて確定（推奨手の採用も可）',
+    en: 'Tap a row to select it, tap cards to assign, then confirm (or apply a suggestion)',
   },
   assignHintStreet: {
-    ja: '2枚置き・1枚捨てを選んで確定（推奨手からも選べます）',
-    en: 'Place 2, discard 1, then confirm (or apply a suggestion)',
+    ja: '段を選択して2枚を割当てると、残り1枚が自動で捨て札になります（推奨手の採用も可）',
+    en: 'Select a row and assign 2 cards; the last one is discarded automatically (or apply a suggestion)',
   },
   boardShapeWarning: {
     ja: '盤面の形が通常の進行と合わないため推奨は出せません（枚数を確認してください）',
