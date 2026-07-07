@@ -36,7 +36,6 @@ interface PB {
   bottom: Card[]
 }
 
-type Dest = RowKey | 'discard'
 type Mode = 'play' | 'fl'
 
 type Target =
@@ -68,7 +67,7 @@ interface Snapshot {
   hero: PB
   heroDiscards: Card[]
   pool: Card[]
-  assign: Record<number, Dest>
+  assign: Record<number, RowKey>
 }
 
 function newWorker(): Worker {
@@ -88,7 +87,7 @@ export default function App() {
   const [heroDiscards, setHeroDiscards] = useState<Card[]>([])
   const [villains, setVillains] = useState<[PB, PB]>([emptyBoard(), emptyBoard()])
   const [pool, setPool] = useState<Card[]>([])
-  const [assign, setAssign] = useState<Record<number, Dest>>({})
+  const [assign, setAssign] = useState<Record<number, RowKey>>({})
   const [target, setTarget] = useState<Target>({ kind: 'pool' })
   const [history, setHistory] = useState<Snapshot[]>([])
 
@@ -267,35 +266,47 @@ export default function App() {
     [usedIds, canAdd, target],
   )
 
-  const setDest = useCallback((id: number, dest: Dest) => {
-    setAssign((a) => (a[id] === dest ? removeKey(a, id) : { ...a, [id]: dest }))
-  }, [])
+  // プールのカードをタップ: 選択中の段へ割当（もう一度タップで解除）。
+  // ドローが揃う前、または選択先がドロー自身のときは従来どおり取り除き。
+  const onPoolCardTap = useCallback(
+    (card: Card) => {
+      const id = cardId(card)
+      if (pool.length !== expectedDraw || target.kind === 'pool') {
+        onPickerToggle(card)
+        return
+      }
+      if (target.kind !== 'hero') return
+      const row = target.row
+      setAssign((a) => {
+        if (a[id] === row) return removeKey(a, id)
+        // 段の空き容量を超える割当は無視する
+        const already = Object.entries(a).filter(([k, r]) => Number(k) !== id && r === row).length
+        if (hero[row].length + already >= ROW_CAP[row]) return a
+        return { ...a, [id]: row }
+      })
+    },
+    [pool.length, expectedDraw, target, hero, onPickerToggle],
+  )
 
   // ---- コミット判定 ----
+  // 初手は5枚すべてを段へ割当。ストリートは2枚を割当し、残る1枚が自動的に捨て札になる。
   const commitState = useMemo(() => {
     if (mode !== 'play' || pool.length === 0 || pool.length !== expectedDraw) {
       return { valid: false }
     }
     const rowAdd: Record<RowKey, number> = { top: 0, middle: 0, bottom: 0 }
-    let discards = 0
     let assigned = 0
     for (const c of pool) {
       const d = assign[cardId(c)]
       if (!d) continue
       assigned++
-      if (d === 'discard') discards++
-      else rowAdd[d]++
+      rowAdd[d]++
     }
-    if (assigned !== pool.length) return { valid: false }
     for (const r of ROWS) {
       if (hero[r].length + rowAdd[r] > ROW_CAP[r]) return { valid: false }
     }
-    if (heroCount === 0) {
-      if (discards !== 0) return { valid: false }
-    } else if (discards !== 1) {
-      return { valid: false }
-    }
-    return { valid: true }
+    const need = heroCount === 0 ? pool.length : pool.length - 1
+    return { valid: assigned === need }
   }, [mode, pool, expectedDraw, assign, hero, heroCount])
 
   const commit = useCallback(() => {
@@ -305,8 +316,8 @@ export default function App() {
     const nd = [...heroDiscards]
     for (const c of pool) {
       const d = assign[cardId(c)]
-      if (d === 'discard') nd.push(c)
-      else if (d) nb[d] = [...nb[d], c]
+      if (d) nb[d] = [...nb[d], c]
+      else nd.push(c) // 未割当（ストリートのちょうど1枚）は捨て札
     }
     setHero(nb)
     setHeroDiscards(nd)
@@ -596,8 +607,8 @@ export default function App() {
               ? t(lang, 'drawPrompt', { n: expectedDraw - pool.length })
               : t(lang, heroCount === 0 ? 'assignHintInitial' : 'assignHintStreet')}
           </p>
-          {/* ドロー枚数分の固定グリッド。置き先ボタンは全カード選択後まで
-              visibility:hidden でスペースだけ確保し、選択前後でレイアウトを変えない。 */}
+          {/* ドロー枚数分の固定グリッド。割当バッジのスペースを常に確保し、
+              選択前後でレイアウトを変えない。カードのタップ = 選択中の段へ割当。 */}
           <div
             className="pool-cards"
             style={{ gridTemplateColumns: `repeat(${expectedDraw}, minmax(0, 1fr))` }}
@@ -605,35 +616,33 @@ export default function App() {
             {pool.map((c) => {
               const id = cardId(c)
               const dest = assign[id]
-              const showDest = pool.length === expectedDraw
+              const drawComplete = pool.length === expectedDraw
+              // ストリートで未割当が残り1枚になったら、そのカードは自動的に捨て札。
+              const autoDiscard =
+                drawComplete &&
+                heroCount > 0 &&
+                !dest &&
+                pool.filter((p) => !assign[cardId(p)]).length === 1
               return (
                 <div className="pool-card" key={id}>
-                  <button type="button" className="pool-card-btn" onClick={() => onPickerToggle(c)}>
+                  <button
+                    type="button"
+                    className="pool-card-btn"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onPoolCardTap(c)
+                    }}
+                  >
                     <CardGlyph card={c} />
                   </button>
-                  <div className="dest-btns" style={{ visibility: showDest ? 'visible' : 'hidden' }}>
-                    {ROWS.map((r) => (
-                      <button
-                        type="button"
-                        key={r}
-                        className={dest === r ? 'on' : ''}
-                        disabled={!showDest}
-                        onClick={() => setDest(id, r)}
-                      >
-                        {t(lang, r as MessageKey).slice(0, 1)}
-                      </button>
-                    ))}
-                    {heroCount > 0 && (
-                      <button
-                        type="button"
-                        className={`dest-discard ${dest === 'discard' ? 'on' : ''}`}
-                        disabled={!showDest}
-                        onClick={() => setDest(id, 'discard')}
-                      >
-                        {t(lang, 'discardLabel').slice(0, 1)}
-                      </button>
-                    )}
-                  </div>
+                  <span
+                    className={`dest-badge ${autoDiscard ? 'discard' : ''}`}
+                    style={{ visibility: dest || autoDiscard ? 'visible' : 'hidden' }}
+                  >
+                    {autoDiscard
+                      ? t(lang, 'discardLabel').slice(0, 1)
+                      : t(lang, (dest ?? 'top') as MessageKey).slice(0, 1)}
+                  </span>
                 </div>
               )
             })}
@@ -811,7 +820,7 @@ export default function App() {
 
 // ---- 小物コンポーネント --------------------------------------------------------
 
-function removeKey(a: Record<number, Dest>, id: number): Record<number, Dest> {
+function removeKey(a: Record<number, RowKey>, id: number): Record<number, RowKey> {
   const na = { ...a }
   delete na[id]
   return na

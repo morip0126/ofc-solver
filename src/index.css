@@ -337,37 +337,27 @@ button {
   cursor: pointer;
 }
 
-.dest-btns {
-  display: flex;
-  gap: 2px;
-}
-
-.dest-btns button {
-  border: 1px solid var(--border);
-  background: var(--panel);
-  color: var(--muted);
+/* 割当先バッジ（ト/ミ/ボ、自動捨て札は 捨）。非表示時もスペースを確保する。 */
+.dest-badge {
+  min-width: 22px;
+  text-align: center;
   border-radius: 5px;
-  min-width: 20px;
-  padding: 3px 3px;
+  padding: 3px 4px;
   font-size: 11px;
   font-weight: 700;
-  cursor: pointer;
+  line-height: 1;
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.dest-badge.discard {
+  background: var(--neg);
 }
 
 /* ドロー中/確定待ちでヒント文が入れ替わっても高さが動かないよう2行分を確保 */
 .pool-hint {
-  min-height: 2.5em;
-}
-
-.dest-btns button.on {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--accent-contrast);
-}
-
-.dest-btns button.dest-discard.on {
-  background: var(--neg);
-  border-color: var(--neg);
+  line-height: 1.4;
+  min-height: 2.8em;
 }
 
 .primary-btn {
