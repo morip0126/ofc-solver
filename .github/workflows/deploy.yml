@@ -5,8 +5,7 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches:
-      - claude/new-app-github-repo-f7zjvc # 現在のデフォルトブランチ
-      - main # 将来リネームしても動くように
+      - main
   workflow_dispatch:
 
 permissions:
