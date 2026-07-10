@@ -19,7 +19,7 @@ export interface PersistedSettings {
   lang: 'ja' | 'en'
   variantId: VariantId
   players: 2 | 3
-  mode: 'play' | 'fl'
+  mode: 'play' | 'fl' | 'vs'
   useJokers: boolean
   precision: Precision
 }
@@ -37,6 +37,18 @@ export interface GameSnapshot {
   assign: Record<number, RowKey>
 }
 
+/** 対戦モード（vs ソルバー）の進行状態。デッキ・ソルバー手札込みで保存し、リロード後も続行できる。 */
+export interface VsState {
+  /** 未配布の山札（シャッフル済み、先頭から配る）。 */
+  deck: Card[]
+  /** ソルバーが受け取って未配置の手札（思考中/未処理）。 */
+  villainHand: Card[] | null
+  /** ソルバー自身の捨て札（ソルバーだけが知っている dead）。 */
+  villainDiscards: Card[]
+  /** このハンドを通算成績に加算済みか（リロード時の二重加算防止）。 */
+  scored: boolean
+}
+
 export interface PersistedGame {
   hero: GameBoard
   heroDiscards: Card[]
@@ -44,6 +56,14 @@ export interface PersistedGame {
   pool: Card[]
   assign: Record<number, RowKey>
   history: GameSnapshot[]
+  vs: VsState | null
+}
+
+/** 対戦モードの通算成績。 */
+export interface VsStats {
+  hands: number
+  wins: number
+  total: number
 }
 
 const SETTINGS_KEY = 'ofc-solver:settings:v1'
@@ -99,7 +119,7 @@ export function loadSettings(): Partial<PersistedSettings> {
   if (variantId) out.variantId = variantId as VariantId
   const players = oneOf(o.players, [2, 3] as const)
   if (players) out.players = players
-  const mode = oneOf(o.mode, ['play', 'fl'] as const)
+  const mode = oneOf(o.mode, ['play', 'fl', 'vs'] as const)
   if (mode) out.mode = mode
   if (typeof o.useJokers === 'boolean') out.useJokers = o.useJokers
   const precision = oneOf(o.precision, ['fast', 'standard', 'high'] as const)
@@ -144,6 +164,14 @@ export function saveGame(game: PersistedGame): void {
     pool: game.pool.map(cardToString),
     assign: game.assign,
     history: game.history.slice(-HISTORY_CAP).map(snapshotToCodes),
+    vs: game.vs
+      ? {
+          deck: game.vs.deck.map(cardToString),
+          villainHand: game.vs.villainHand ? game.vs.villainHand.map(cardToString) : null,
+          villainDiscards: game.vs.villainDiscards.map(cardToString),
+          scored: game.vs.scored,
+        }
+      : null,
   })
 }
 
@@ -228,6 +256,18 @@ export function loadGame(useJokers: boolean): PersistedGame | null {
       parseBoard(villainsRaw[0] ?? { top: [], middle: [], bottom: [] }, useJokers),
       parseBoard(villainsRaw[1] ?? { top: [], middle: [], bottom: [] }, useJokers),
     ]
+    let vs: VsState | null = null
+    if (typeof o.vs === 'object' && o.vs !== null) {
+      const vsRaw = o.vs as Record<string, unknown>
+      const deck = parseCodes(vsRaw.deck ?? [], useJokers)
+      if (deck.length > 54) throw new Error('vs deck too large')
+      vs = {
+        deck,
+        villainHand: vsRaw.villainHand == null ? null : parseCodes(vsRaw.villainHand, useJokers),
+        villainDiscards: parseCodes(vsRaw.villainDiscards ?? [], useJokers),
+        scored: vsRaw.scored === true,
+      }
+    }
     assertNoDuplicates([
       hero.top,
       hero.middle,
@@ -235,6 +275,7 @@ export function loadGame(useJokers: boolean): PersistedGame | null {
       heroDiscards,
       pool,
       ...villains.flatMap((v) => [v.top, v.middle, v.bottom]),
+      ...(vs ? [vs.deck, vs.villainHand ?? [], vs.villainDiscards] : []),
     ])
     const historyRaw = Array.isArray(o.history) ? o.history : []
     const history = historyRaw.slice(-HISTORY_CAP).map((s) => parseSnapshot(s, useJokers))
@@ -245,10 +286,27 @@ export function loadGame(useJokers: boolean): PersistedGame | null {
       pool,
       assign: parseAssign(o.assign, pool),
       history,
+      vs,
     }
   } catch {
     return null
   }
+}
+
+// ---- 対戦モードの通算成績 --------------------------------------------------------
+
+const VS_STATS_KEY = 'ofc-solver:vsStats:v1'
+
+export function loadVsStats(): VsStats {
+  const raw = readJSON(VS_STATS_KEY)
+  if (typeof raw !== 'object' || raw === null) return { hands: 0, wins: 0, total: 0 }
+  const o = raw as Record<string, unknown>
+  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
+  return { hands: num(o.hands), wins: num(o.wins), total: num(o.total) }
+}
+
+export function saveVsStats(stats: VsStats): void {
+  writeJSON(VS_STATS_KEY, stats)
 }
 
 /** 初回起動時の言語既定値（ブラウザ設定から推定）。 */

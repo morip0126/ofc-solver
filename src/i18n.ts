@@ -34,6 +34,34 @@ const messages = {
     ja: 'デッキを切り替えると盤面がリセットされます。よろしいですか？',
     en: 'Switching decks resets the board. Continue?',
   },
+  confirmModeSwitch: {
+    ja: 'モードを切り替えると盤面がリセットされます。よろしいですか？',
+    en: 'Switching modes resets the board. Continue?',
+  },
+
+  modeVs: { ja: '対戦', en: 'VS' },
+  solverName: { ja: 'ソルバー', en: 'Solver' },
+  vsIntro: {
+    ja: 'ソルバーと1対1で対戦します。配牌は自動、捨て札は互いに非公開です。',
+    en: 'Play heads-up against the solver. Cards are dealt automatically; discards are hidden from each other.',
+  },
+  vsDeal: { ja: '配る', en: 'Deal' },
+  vsNextHand: { ja: '次のハンド', en: 'Next hand' },
+  vsThinking: { ja: '思考中…', en: 'thinking…' },
+  vsResultWin: { ja: '勝ち！', en: 'You win!' },
+  vsResultLose: { ja: '負け', en: 'You lose' },
+  vsResultTie: { ja: '引き分け', en: 'Tie' },
+  vsScore: { ja: 'このハンド', en: 'This hand' },
+  vsYou: { ja: 'あなた', en: 'You' },
+  vsStatsLine: {
+    ja: '通算 {hands}ハンド / 勝率 {wr}% / 収支 {total}点',
+    en: 'Session: {hands} hands / win {wr}% / total {total} pts',
+  },
+  vsResetStats: { ja: '通算成績をリセット', en: 'Reset stats' },
+  vsRules: {
+    ja: 'スコア = 各段の勝敗±1 + スクープ3 + ロイヤリティ差（ファウルは6点 + 相手ロイヤリティ献上）',
+    en: 'Score = ±1 per row + 3 scoop + royalty diff (foul concedes 6 + opponent royalties)',
+  },
 
   hero: { ja: 'Hero', en: 'Hero' },
   villainN: { ja: 'Villain {n}', en: 'Villain {n}' },
@@ -60,6 +88,14 @@ const messages = {
   assignHintStreet: {
     ja: '段を選択して2枚を割当てると、残り1枚が自動で捨て札になります（推奨手の採用も可）',
     en: 'Select a row and assign 2 cards; the last one is discarded automatically (or apply a suggestion)',
+  },
+  vsAssignHintInitial: {
+    ja: '置き先の段をタップで選択し、カードをタップで割当てて確定',
+    en: 'Tap a row to select it, tap cards to assign, then confirm',
+  },
+  vsAssignHintStreet: {
+    ja: '段を選択して2枚を割当てると、残り1枚が自動で捨て札になります',
+    en: 'Select a row and assign 2 cards; the last one is discarded automatically',
   },
   boardShapeWarning: {
     ja: '盤面の形が通常の進行と合わないため推奨は出せません（枚数を確認してください）',

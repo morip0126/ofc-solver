@@ -11,10 +11,12 @@ import {
   cardToString,
   evaluateArrangement,
   fantasylandCards,
+  makeDeck,
   parseCards,
   royaltiesTotal,
   scoreEvaluated,
   scoreMultiEvaluated,
+  shuffle,
 } from './domain'
 import { type Lang, type MessageKey, t } from './i18n'
 import { CardGlyph } from './ui/CardGlyph'
@@ -34,11 +36,14 @@ import {
 } from './worker/solverClient'
 import {
   type Precision,
+  type VsStats,
   detectLang,
   loadGame,
   loadSettings,
+  loadVsStats,
   saveGame,
   saveSettings,
+  saveVsStats,
 } from './persist'
 
 // ---- 型・ヘルパー -------------------------------------------------------------
@@ -49,7 +54,7 @@ interface PB {
   bottom: Card[]
 }
 
-type Mode = 'play' | 'fl'
+type Mode = 'play' | 'fl' | 'vs'
 
 type Target =
   | { kind: 'pool' }
@@ -129,9 +134,23 @@ export default function App() {
   const [evBusy, setEvBusy] = useState(false)
   const [flProgress, setFlProgress] = useState(0)
 
+  // ---- 対戦モード（vs ソルバー）----
+  const [vsDeck, setVsDeck] = useState<Card[]>(boot.game?.vs?.deck ?? [])
+  const [vsVillainHand, setVsVillainHand] = useState<Card[] | null>(
+    boot.game?.vs?.villainHand ?? null,
+  )
+  const [vsVillainDiscards, setVsVillainDiscards] = useState<Card[]>(
+    boot.game?.vs?.villainDiscards ?? [],
+  )
+  const [vsScored, setVsScored] = useState(boot.game?.vs?.scored ?? false)
+  const [vsBusy, setVsBusy] = useState(false)
+  const [vsError, setVsError] = useState<string | null>(null)
+  const [vsStats, setVsStats] = useState<VsStats>(() => loadVsStats())
+
   const suggTask = useRef<PoolTask<SuggestionDTO[]> | null>(null)
   const flTask = useRef<PoolTask<FLResultDTO[]> | null>(null)
   const evTask = useRef<PoolTask<EvResult> | null>(null)
+  const vsTask = useRef<PoolTask<SuggestionDTO[]> | null>(null)
 
   useEffect(() => {
     // Worker プールを先に温めて初回推奨の体感を短くする。
@@ -140,6 +159,7 @@ export default function App() {
       suggTask.current?.cancel()
       flTask.current?.cancel()
       evTask.current?.cancel()
+      vsTask.current?.cancel()
     }
   }, [])
 
@@ -149,7 +169,11 @@ export default function App() {
     [villains, players],
   )
   const heroCount = boardCount(hero)
-  const expectedDraw = mode === 'play' ? (heroCount === 0 ? 5 : heroCount >= 13 ? 0 : 3) : FL_MAX
+  const expectedDraw = mode === 'fl' ? FL_MAX : heroCount === 0 ? 5 : heroCount >= 13 ? 0 : 3
+  // 対戦モードでハンドが進行中か（配牌済み・盤面のいずれかにカードがある）。
+  const vsHandActive =
+    mode === 'vs' &&
+    (pool.length > 0 || heroCount > 0 || vsVillainHand !== null || boardCount(villains[0]) > 0)
 
   const dead = useMemo(
     () => [...shownVillains.flatMap(boardCards), ...heroDiscards],
@@ -188,24 +212,21 @@ export default function App() {
   }, [lang, variantId, players, mode, useJokers, precision])
 
   useEffect(() => {
-    saveGame({ hero, heroDiscards, villains, pool, assign, history })
-  }, [hero, heroDiscards, villains, pool, assign, history])
+    saveGame({
+      hero,
+      heroDiscards,
+      villains,
+      pool,
+      assign,
+      history,
+      vs: { deck: vsDeck, villainHand: vsVillainHand, villainDiscards: vsVillainDiscards, scored: vsScored },
+    })
+  }, [hero, heroDiscards, villains, pool, assign, history, vsDeck, vsVillainHand, vsVillainDiscards, vsScored])
 
   // ---- 入力操作 ----
   const setPlayers = useCallback((n: 2 | 3) => {
     setPlayersState(n)
     if (n === 2) setVillains((v) => [v[0], emptyBoard()])
-    setTarget({ kind: 'pool' })
-  }, [])
-
-  const setMode = useCallback((m: Mode) => {
-    setModeState(m)
-    setPool([])
-    setAssign({})
-    setSugg(null)
-    setFlResults(null)
-    setFlError(null)
-    setEv(null)
     setTarget({ kind: 'pool' })
   }, [])
 
@@ -220,7 +241,32 @@ export default function App() {
     setFlResults(null)
     setEv(null)
     setTarget({ kind: 'pool' })
+    setVsDeck([])
+    setVsVillainHand(null)
+    setVsVillainDiscards([])
+    setVsScored(false)
+    setVsError(null)
   }, [])
+
+  const setMode = useCallback(
+    (m: Mode) => {
+      if (m === mode) return
+      // 対戦モードは専用のデッキ進行を持つため、跨ぐ切替では盤面をクリアする。
+      if (m === 'vs' || mode === 'vs') {
+        if (usedIds.size > 0 && !window.confirm(t(lang, 'confirmModeSwitch'))) return
+        clearAll()
+      }
+      setModeState(m)
+      setPool([])
+      setAssign({})
+      setSugg(null)
+      setFlResults(null)
+      setFlError(null)
+      setEv(null)
+      setTarget({ kind: 'pool' })
+    },
+    [mode, usedIds, lang, clearAll],
+  )
 
   // リセットは破壊的なので、カードが置かれているときは確認してから。
   const resetAll = useCallback(() => {
@@ -261,6 +307,8 @@ export default function App() {
 
   const onPickerToggle = useCallback(
     (card: Card) => {
+      // 対戦モードでは配牌は自動なので手動での追加/取り除きは無効。
+      if (mode === 'vs') return
       const id = cardId(card)
       if (usedIds.has(id)) {
         // どこにあっても取り除く
@@ -307,7 +355,7 @@ export default function App() {
         })
       }
     },
-    [usedIds, canAdd, target],
+    [mode, usedIds, canAdd, target],
   )
 
   // プールのカードをタップ: 選択中の段へ割当（もう一度タップで解除）。
@@ -335,9 +383,11 @@ export default function App() {
   // ---- コミット判定 ----
   // 初手は5枚すべてを段へ割当。ストリートは2枚を割当し、残る1枚が自動的に捨て札になる。
   const commitState = useMemo(() => {
-    if (mode !== 'play' || pool.length === 0 || pool.length !== expectedDraw) {
+    if (mode === 'fl' || pool.length === 0 || pool.length !== expectedDraw) {
       return { valid: false }
     }
+    // 対戦モードではソルバーの思考完了を待ってから次のストリートへ進む。
+    if (mode === 'vs' && vsBusy) return { valid: false }
     const rowAdd: Record<RowKey, number> = { top: 0, middle: 0, bottom: 0 }
     let assigned = 0
     for (const c of pool) {
@@ -351,7 +401,7 @@ export default function App() {
     }
     const need = heroCount === 0 ? pool.length : pool.length - 1
     return { valid: assigned === need }
-  }, [mode, pool, expectedDraw, assign, hero, heroCount])
+  }, [mode, vsBusy, pool, expectedDraw, assign, hero, heroCount])
 
   const commit = useCallback(() => {
     if (!commitState.valid) return
@@ -369,7 +419,22 @@ export default function App() {
     setAssign({})
     setSugg(null)
     setEv(null)
-  }, [commitState.valid, pushHistory, hero, heroDiscards, pool, assign])
+
+    // 対戦モード: 確定に合わせて山札から次のラウンドを配る。
+    // ソルバーは Hero の確定を見てから自分のラウンドを打つ（思考は villain 効果で非同期）。
+    if (mode === 'vs') {
+      let deck = vsDeck
+      if (boardCount(villains[0]) < 13) {
+        setVsVillainHand(deck.slice(0, 3))
+        deck = deck.slice(3)
+      }
+      if (boardCount(nb) < 13) {
+        setPool(deck.slice(0, 3))
+        deck = deck.slice(3)
+      }
+      setVsDeck(deck)
+    }
+  }, [commitState.valid, pushHistory, hero, heroDiscards, pool, assign, mode, vsDeck, villains])
 
   const applySuggestion = useCallback(
     (s: SuggestionDTO) => {
@@ -486,10 +551,91 @@ export default function App() {
       })
   }, [pool, variantId, useJokers])
 
+  // ---- 対戦モード（vs ソルバー）----
+
+  // 新しいハンドを配る。Hero へ5枚（ドローとして）、ソルバーへ5枚（手札として）。
+  const dealVs = useCallback(() => {
+    const deck = shuffle(makeDeck(useJokers))
+    setHero(emptyBoard())
+    setHeroDiscards([])
+    setVillains([emptyBoard(), emptyBoard()])
+    setAssign({})
+    setHistory([])
+    setEv(null)
+    setVsError(null)
+    setVsScored(false)
+    setVsVillainDiscards([])
+    setPool(deck.slice(0, 5))
+    setVsVillainHand(deck.slice(5, 10))
+    setVsDeck(deck.slice(10))
+    setTarget({ kind: 'pool' })
+  }, [useJokers])
+
+  // ソルバーの思考: 手札（vsVillainHand）があれば推奨エンジンで配置を決める。
+  // ソルバーが知れるのは自分の盤面・手札・捨て札と、Hero の公開盤面のみ（Hero の捨て札は見ない）。
+  useEffect(() => {
+    if (mode !== 'vs' || !vsVillainHand) {
+      setVsBusy(false)
+      return
+    }
+    setVsBusy(true)
+    const villainBoard = villains[0]
+    const deadForVillain = [...boardCards(hero), ...vsVillainDiscards]
+    const iters = PRECISION_ITERS[precision]
+    const task =
+      boardCount(villainBoard) === 0
+        ? suggestInitialParallel(
+            { cards: vsVillainHand, dead: deadForVillain, variantId, jokers: useJokers, iters: iters.initial },
+          )
+        : suggestStreetParallel(
+            { board: villainBoard, drawn: vsVillainHand, dead: deadForVillain, variantId, jokers: useJokers, iters: iters.street },
+          )
+    vsTask.current = task
+    task.promise
+      .then((suggs) => {
+        if (vsTask.current !== task) return
+        setVsBusy(false)
+        const top = suggs[0]
+        if (!top) {
+          setVsError('no arrangement')
+          return
+        }
+        setVillains((vs) => [
+          { top: parseCards(top.top), middle: parseCards(top.middle), bottom: parseCards(top.bottom) },
+          vs[1],
+        ])
+        if (top.discarded) {
+          const discarded = parseCards(top.discarded)
+          setVsVillainDiscards((d) => [...d, ...discarded])
+        }
+        setVsVillainHand(null)
+      })
+      .catch((err) => {
+        if (vsTask.current !== task) return
+        setVsBusy(false)
+        if (!(err instanceof CanceledError)) {
+          setVsError(err instanceof Error ? err.message : String(err))
+        }
+      })
+    return () => {
+      if (vsTask.current === task) {
+        task.cancel()
+        vsTask.current = null
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, vsVillainHand])
+
+  const resetVsStats = useCallback(() => {
+    const zero: VsStats = { hands: 0, wins: 0, total: 0 }
+    saveVsStats(zero)
+    setVsStats(zero)
+  }, [])
+
   // ---- 完成時の評価 ----
   const variant = VARIANTS[variantId]
   const heroFinal = useMemo(() => {
-    if (mode !== 'play' || heroCount !== 13) return null
+    if (mode === 'fl' || heroCount !== 13) return null
     if (hero.top.length !== 3 || hero.middle.length !== 5 || hero.bottom.length !== 5) return null
     const evaluated = evaluateArrangement(hero)
     return {
@@ -510,6 +656,42 @@ export default function App() {
     const pairwise = evs.map((v) => scoreEvaluated(heroFinal.evaluated, v, variant))
     return { total: totals[0], pairwise }
   }, [heroFinal, shownVillains, variant])
+
+  // 対戦モードの結果（両者13枚完成時のみ）。
+  const vsResult = useMemo(() => {
+    if (mode !== 'vs' || !heroFinal) return null
+    const v = villains[0]
+    if (v.top.length !== 3 || v.middle.length !== 5 || v.bottom.length !== 5) return null
+    const vEval = evaluateArrangement(v)
+    return {
+      score: scoreEvaluated(heroFinal.evaluated, vEval, variant),
+      hero: {
+        fouled: heroFinal.evaluated.fouled,
+        royalties: heroFinal.evaluated.fouled ? 0 : heroFinal.royalties,
+        fl: heroFinal.evaluated.fouled ? 0 : heroFinal.flCards,
+      },
+      villain: {
+        fouled: vEval.fouled,
+        royalties: vEval.fouled ? 0 : royaltiesTotal(vEval),
+        fl: vEval.fouled ? 0 : fantasylandCards(vEval, variant),
+      },
+    }
+  }, [mode, heroFinal, villains, variant])
+
+  // ハンド完了時に通算成績へ一度だけ加算する（vsScored は永続化されリロードでも二重加算しない）。
+  useEffect(() => {
+    if (!vsResult || vsScored) return
+    setVsScored(true)
+    setVsStats((s) => {
+      const next: VsStats = {
+        hands: s.hands + 1,
+        wins: s.wins + (vsResult.score > 0 ? 1 : 0),
+        total: s.total + vsResult.score,
+      }
+      saveVsStats(next)
+      return next
+    })
+  }, [vsResult, vsScored])
 
   // ---- 描画 ----
   const streetLabel =
@@ -572,12 +754,20 @@ export default function App() {
           >
             {t(lang, 'modePlay')}
           </button>
+          <button type="button" className={mode === 'vs' ? 'on' : ''} onClick={() => setMode('vs')}>
+            {t(lang, 'modeVs')}
+          </button>
           <button type="button" className={mode === 'fl' ? 'on' : ''} onClick={() => setMode('fl')}>
             {t(lang, 'modeFL')}
           </button>
         </div>
         <div className="spacer" />
-        <button type="button" className="ghost-btn" onClick={undo} disabled={history.length === 0}>
+        <button
+          type="button"
+          className="ghost-btn"
+          onClick={undo}
+          disabled={history.length === 0 || mode === 'vs'}
+        >
           {t(lang, 'undo')}
         </button>
         <button type="button" className="ghost-btn" onClick={resetAll}>
@@ -585,7 +775,33 @@ export default function App() {
         </button>
       </div>
 
-      {mode === 'play' && (
+      {mode === 'vs' && !vsHandActive && (
+        <section className="panel">
+          <div className="panel-head">
+            <span className="panel-title">{t(lang, 'modeVs')}</span>
+          </div>
+          <p className="hint">{t(lang, 'vsIntro')}</p>
+          <button type="button" className="primary-btn" onClick={dealVs}>
+            {t(lang, 'vsDeal')}
+          </button>
+          {vsStats.hands > 0 && (
+            <div className="final-scores">
+              <span>
+                {t(lang, 'vsStatsLine', {
+                  hands: vsStats.hands,
+                  wr: Math.round((vsStats.wins / vsStats.hands) * 100),
+                  total: `${vsStats.total >= 0 ? '+' : ''}${vsStats.total}`,
+                })}
+              </span>
+              <button type="button" className="ghost-btn" onClick={resetVsStats}>
+                {t(lang, 'vsResetStats')}
+              </button>
+            </div>
+          )}
+        </section>
+      )}
+
+      {(mode === 'play' || vsHandActive) && (
         <section className="panel hero-panel">
           <div className="panel-head">
             <span className="panel-title">{t(lang, 'hero')}</span>
@@ -626,7 +842,7 @@ export default function App() {
         </section>
       )}
 
-      {mode === 'play' && heroCount < 13 && (
+      {(mode === 'play' || vsHandActive) && heroCount < 13 && (
         <section
           className={`panel pool-panel selectable ${target.kind === 'pool' ? 'active' : ''}`}
           onClick={() => setTarget({ kind: 'pool' })}
@@ -640,7 +856,16 @@ export default function App() {
           <p className="hint pool-hint">
             {pool.length < expectedDraw
               ? t(lang, 'drawPrompt', { n: expectedDraw - pool.length })
-              : t(lang, heroCount === 0 ? 'assignHintInitial' : 'assignHintStreet')}
+              : t(
+                  lang,
+                  mode === 'vs'
+                    ? heroCount === 0
+                      ? 'vsAssignHintInitial'
+                      : 'vsAssignHintStreet'
+                    : heroCount === 0
+                      ? 'assignHintInitial'
+                      : 'assignHintStreet',
+                )}
           </p>
           {/* ドロー枚数分の固定グリッド。割当バッジのスペースを常に確保し、
               選択前後でレイアウトを変えない。カードのタップ = 選択中の段へ割当。 */}
@@ -683,8 +908,55 @@ export default function App() {
             })}
           </div>
           <button type="button" className="primary-btn" disabled={!commitState.valid} onClick={commit}>
-            {t(lang, 'commit')}
+            {mode === 'vs' && vsBusy ? t(lang, 'vsThinking') : t(lang, 'commit')}
           </button>
+        </section>
+      )}
+
+      {mode === 'vs' && vsResult && (
+        <section className="panel">
+          <div className="panel-head">
+            <span className="panel-title">
+              {vsResult.score > 0
+                ? t(lang, 'vsResultWin')
+                : vsResult.score < 0
+                  ? t(lang, 'vsResultLose')
+                  : t(lang, 'vsResultTie')}
+            </span>
+            <span className="street-label">
+              {t(lang, 'vsScore')} <SignedNumber value={vsResult.score} />
+            </span>
+          </div>
+          <div className="final-scores">
+            {(
+              [
+                [t(lang, 'vsYou'), vsResult.hero],
+                [t(lang, 'solverName'), vsResult.villain],
+              ] as const
+            ).map(([name, side]) => (
+              <span key={name}>
+                {name}:{' '}
+                {side.fouled
+                  ? t(lang, 'fouled')
+                  : `${t(lang, 'royalties')} ${side.royalties} / FL ${
+                      side.fl > 0 ? t(lang, 'flCards', { n: side.fl }) : t(lang, 'flNone')
+                    }`}
+              </span>
+            ))}
+          </div>
+          <button type="button" className="primary-btn" onClick={dealVs}>
+            {t(lang, 'vsNextHand')}
+          </button>
+          {vsStats.hands > 0 && (
+            <p className="ev-hint">
+              {t(lang, 'vsStatsLine', {
+                hands: vsStats.hands,
+                wr: Math.round((vsStats.wins / vsStats.hands) * 100),
+                total: `${vsStats.total >= 0 ? '+' : ''}${vsStats.total}`,
+              })}
+            </p>
+          )}
+          <p className="ev-hint">{t(lang, 'vsRules')}</p>
         </section>
       )}
 
@@ -840,29 +1112,48 @@ export default function App() {
         </section>
       )}
 
-      {shownVillains.map((v, idx) => (
-        <section className="panel villain-panel" key={idx}>
-          <div className="panel-head">
-            <span className="panel-title">{t(lang, 'villainN', { n: idx + 1 })}</span>
-            <span className="street-label">{boardCount(v)}/13</span>
-          </div>
-          {ROWS.map((row) => (
-            <BoardRow
-              key={row}
-              lang={lang}
-              row={row}
-              cards={v[row]}
-              active={target.kind === 'villain' && target.idx === idx && target.row === row}
-              onSelect={() => setTarget({ kind: 'villain', idx, row })}
-              onRemove={(c) => onPickerToggle(c)}
-              compact
-            />
+      {mode === 'vs'
+        ? vsHandActive && (
+            <section className="panel villain-panel">
+              <div className="panel-head">
+                <span className="panel-title">{t(lang, 'solverName')}</span>
+                {vsBusy && <span className="street-label">{t(lang, 'vsThinking')}</span>}
+                <span className="street-label">{boardCount(villains[0])}/13</span>
+              </div>
+              <ResultRows
+                lang={lang}
+                top={villains[0].top}
+                middle={villains[0].middle}
+                bottom={villains[0].bottom}
+              />
+              {vsError && <p className="hint error">{t(lang, 'errorPrefix', { msg: vsError })}</p>}
+            </section>
+          )
+        : shownVillains.map((v, idx) => (
+            <section className="panel villain-panel" key={idx}>
+              <div className="panel-head">
+                <span className="panel-title">{t(lang, 'villainN', { n: idx + 1 })}</span>
+                <span className="street-label">{boardCount(v)}/13</span>
+              </div>
+              {ROWS.map((row) => (
+                <BoardRow
+                  key={row}
+                  lang={lang}
+                  row={row}
+                  cards={v[row]}
+                  active={target.kind === 'villain' && target.idx === idx && target.row === row}
+                  onSelect={() => setTarget({ kind: 'villain', idx, row })}
+                  onRemove={(c) => onPickerToggle(c)}
+                  compact
+                />
+              ))}
+            </section>
           ))}
-        </section>
-      ))}
 
-      <p className="hint">{t(lang, 'targetHint')}</p>
-      <CardPicker selected={usedIds} canAdd={canAdd} onToggle={onPickerToggle} jokers={useJokers} />
+      {mode !== 'vs' && <p className="hint">{t(lang, 'targetHint')}</p>}
+      {mode !== 'vs' && (
+        <CardPicker selected={usedIds} canAdd={canAdd} onToggle={onPickerToggle} jokers={useJokers} />
+      )}
     </main>
   )
 }

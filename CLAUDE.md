@@ -41,7 +41,9 @@
   FL は `solveFantasyland` の `bottomRange`、EV は `estimateEVvsRandomStats` のシード分割 +
   Chan の公式で統合）。**候補ごとに独立シードの PRNG を使うため分割不変**。この性質は
   `solverParallel.test.ts` で担保しているので、チャンク API を触ったら必ず維持・更新する。
-- UI は実戦アシスタント（`App.tsx`）: プレイモード（初手→ストリート進行 + 推奨手）と FL モード。
+- UI は実戦アシスタント（`App.tsx`）: プレイモード（初手→ストリート進行 + 推奨手）、
+  対戦モード（vs ソルバー。山札進行・ソルバー手番は `App.tsx` の vs 系 state、ソルバーの情報は
+  自身の手札/捨て札 + Hero の公開盤面のみに制限）、FL モード。
   Worker プロトコルは `solver.worker.ts`（evalInitialChunk / evalStreetChunk / solveFL / ev ほか）。
   設定・盤面は `persist.ts` が localStorage に自動保存（スキーマ変更時はキーの版数を上げる）。
   オフライン対応は `vite-plugin-pwa` の Service Worker（`vite.config.ts`）。
