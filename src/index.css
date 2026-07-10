@@ -11,6 +11,15 @@
   --sel: #2563eb;
   --red: #d61f2b;
   --black: #1a1a1a;
+  /* 4色デッキ: ♠黒 / ♥赤 / ♦青 / ♣緑 */
+  --suit-s: #1a1a1a;
+  --suit-h: #d61f2b;
+  --suit-d: #0f6fd6;
+  --suit-c: #128a3e;
+  /* 割当バッジの段別色 */
+  --dest-top: #7c3aed;
+  --dest-middle: #0d9488;
+  --dest-bottom: #2563eb;
   --pos: #15803d;
   --neg: #dc2626;
   --error: #dc2626;
@@ -30,6 +39,13 @@
     --sel: #3b82f6;
     --red: #ff6b73;
     --black: #e8e8ea;
+    --suit-s: #e8e8ea;
+    --suit-h: #ff6b73;
+    --suit-d: #5aa8ff;
+    --suit-c: #43d17a;
+    --dest-top: #a78bfa;
+    --dest-middle: #2dd4bf;
+    --dest-bottom: #3b82f6;
     --pos: #4ade80;
     --neg: #f87171;
     --error: #f87171;
@@ -300,12 +316,20 @@ button {
   font-size: 12px;
 }
 
-.card-glyph.red {
-  color: var(--red);
+.card-glyph.suit-s {
+  color: var(--suit-s);
 }
 
-.card-glyph.black {
-  color: var(--black);
+.card-glyph.suit-h {
+  color: var(--suit-h);
+}
+
+.card-glyph.suit-d {
+  color: var(--suit-d);
+}
+
+.card-glyph.suit-c {
+  color: var(--suit-c);
 }
 
 .card-glyph .suit {
@@ -341,9 +365,16 @@ button {
   background: transparent;
   padding: 0;
   cursor: pointer;
+  transition: transform 0.08s ease;
 }
 
-/* 割当先バッジ（ト/ミ/ボ、自動捨て札は 捨）。非表示時もスペースを確保する。 */
+/* タップの手応え（押した瞬間に少し沈む） */
+.pool-card-btn:active {
+  transform: scale(0.9);
+}
+
+/* 割当先バッジ（ト/ミ/ボ、自動捨て札は 捨）。非表示時もスペースを確保する。
+   タップで トップ→ミドル→ボトム→未定 と循環し、段ごとに色分けする。 */
 .dest-badge {
   min-width: 22px;
   text-align: center;
@@ -354,6 +385,19 @@ button {
   line-height: 1;
   background: var(--accent);
   color: var(--accent-contrast);
+  transition: background 0.12s ease;
+}
+
+.dest-badge.dest-top {
+  background: var(--dest-top);
+}
+
+.dest-badge.dest-middle {
+  background: var(--dest-middle);
+}
+
+.dest-badge.dest-bottom {
+  background: var(--dest-bottom);
 }
 
 .dest-badge.discard {
@@ -641,12 +685,20 @@ button {
   font-size: 11px;
 }
 
-.picker-cell.red {
-  color: var(--red);
+.picker-cell.suit-s {
+  color: var(--suit-s);
 }
 
-.picker-cell.black {
-  color: var(--black);
+.picker-cell.suit-h {
+  color: var(--suit-h);
+}
+
+.picker-cell.suit-d {
+  color: var(--suit-d);
+}
+
+.picker-cell.suit-c {
+  color: var(--suit-c);
 }
 
 .picker-cell.sel {

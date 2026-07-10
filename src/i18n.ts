@@ -61,7 +61,7 @@ const messages = {
     ja: '{hands}ハンド / 勝率 {wr}% / 収支 {total}点',
     en: '{hands} hands / win {wr}% / total {total} pts',
   },
-  vsResetStats: { ja: '通算成績をリセット', en: 'Reset stats' },
+  vsResetStats: { ja: 'この設定の成績をリセット', en: 'Reset stats (this ruleset)' },
   vsRules: {
     ja: 'スコア = 各段の勝敗±1 + スクープ3 + ロイヤリティ差（ファウルは6点 + 相手ロイヤリティ献上）',
     en: 'Score = ±1 per row + 3 scoop + royalty diff (foul concedes 6 + opponent royalties)',
@@ -86,20 +86,20 @@ const messages = {
   handComplete: { ja: '完成', en: 'Complete' },
   drawPrompt: { ja: 'ドローをあと{n}枚選んでください', en: 'Pick {n} more drawn card(s)' },
   assignHintInitial: {
-    ja: '置き先の段をタップで選択し、カードをタップで割当てて確定（推奨手の採用も可）',
-    en: 'Tap a row to select it, tap cards to assign, then confirm (or apply a suggestion)',
+    ja: 'カードをタップするたびに置き先が トップ→ミドル→ボトム→未定 と切替わります（推奨手の採用も可）',
+    en: 'Tap a card to cycle its destination: Top → Middle → Bottom → unset (or apply a suggestion)',
   },
   assignHintStreet: {
-    ja: '段を選択して2枚を割当てると、残り1枚が自動で捨て札になります（推奨手の採用も可）',
-    en: 'Select a row and assign 2 cards; the last one is discarded automatically (or apply a suggestion)',
+    ja: 'タップで置き先を切替え。2枚を割当てると残り1枚が自動で捨て札になります（推奨手の採用も可）',
+    en: 'Tap cards to cycle destinations; assign 2 and the last is discarded automatically (or apply a suggestion)',
   },
   vsAssignHintInitial: {
-    ja: '置き先の段をタップで選択し、カードをタップで割当てて確定',
-    en: 'Tap a row to select it, tap cards to assign, then confirm',
+    ja: 'カードをタップするたびに置き先が トップ→ミドル→ボトム→未定 と切替わります',
+    en: 'Tap a card to cycle its destination: Top → Middle → Bottom → unset',
   },
   vsAssignHintStreet: {
-    ja: '段を選択して2枚を割当てると、残り1枚が自動で捨て札になります',
-    en: 'Select a row and assign 2 cards; the last one is discarded automatically',
+    ja: 'タップで置き先を切替え。2枚を割当てると残り1枚が自動で捨て札になります',
+    en: 'Tap cards to cycle destinations; assign 2 and the last is discarded automatically',
   },
   boardShapeWarning: {
     ja: '盤面の形が通常の進行と合わないため推奨は出せません（枚数を確認してください）',
