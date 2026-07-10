@@ -221,6 +221,12 @@ button {
   outline-offset: -1px;
 }
 
+/* カード選択中に置ける段（点線でドロップ先を示す） */
+.board-row.droppable {
+  outline: 2px dashed var(--sel);
+  outline-offset: -1px;
+}
+
 /* --- board rows --- */
 .board-row {
   display: flex;
@@ -371,6 +377,15 @@ button {
 /* タップの手応え（押した瞬間に少し沈む） */
 .pool-card-btn:active {
   transform: scale(0.9);
+}
+
+/* 選択中のプールカード: 少し持ち上げてリングで強調 */
+.pool-card-btn.sel {
+  transform: translateY(-3px);
+}
+
+.pool-card-btn.sel .card-glyph {
+  box-shadow: 0 0 0 2px var(--sel);
 }
 
 /* 割当先バッジ（ト/ミ/ボ、自動捨て札は 捨）。非表示時もスペースを確保する。

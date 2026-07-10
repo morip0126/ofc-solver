@@ -127,6 +127,8 @@ export default function App() {
   )
   const [pool, setPool] = useState<Card[]>(boot.game?.pool ?? [])
   const [assign, setAssign] = useState<Record<number, RowKey>>(boot.game?.assign ?? {})
+  /** 選択中のプールカード（このカードを次にタップした段へ置く）。 */
+  const [selectedPoolId, setSelectedPoolId] = useState<number | null>(null)
   const [target, setTarget] = useState<Target>({ kind: 'pool' })
   const [history, setHistory] = useState<Snapshot[]>(boot.game?.history ?? [])
 
@@ -256,6 +258,7 @@ export default function App() {
     setVillains([emptyBoard(), emptyBoard()])
     setPool([])
     setAssign({})
+    setSelectedPoolId(null)
     setHistory([])
     setSugg(null)
     setFlResults(null)
@@ -279,6 +282,7 @@ export default function App() {
       setModeState(m)
       setPool([])
       setAssign({})
+      setSelectedPoolId(null)
       setSugg(null)
       setFlResults(null)
       setFlError(null)
@@ -332,6 +336,7 @@ export default function App() {
       const id = cardId(card)
       if (usedIds.has(id)) {
         // どこにあっても取り除く
+        setSelectedPoolId((s) => (s === id ? null : s))
         setPool((p) => p.filter((c) => cardId(c) !== id))
         setAssign((a) => {
           if (!(id in a)) return a
@@ -378,8 +383,9 @@ export default function App() {
     [mode, usedIds, canAdd, target],
   )
 
-  // プールのカードをタップ: 置き先を トップ → ミドル → ボトム → 未定 の順に循環させる。
-  // 空きのない段は自動でスキップ。ドローが揃う前は従来どおり取り除き（手入力の修正用）。
+  // プールのカードをタップ: そのカードを選択する（次にタップした段へ置く）。
+  // 選択中のカードをもう一度タップすると、割当があれば解除、なければ選択解除。
+  // ドローが揃う前は従来どおり取り除き（手入力の修正用）。
   const onPoolCardTap = useCallback(
     (card: Card) => {
       const id = cardId(card)
@@ -387,19 +393,51 @@ export default function App() {
         onPickerToggle(card)
         return
       }
-      setAssign((a) => {
-        const cur = a[id]
-        const start = cur ? ROWS.indexOf(cur) + 1 : 0
-        for (let i = start; i < ROWS.length; i++) {
-          const row = ROWS[i]
-          const already = Object.entries(a).filter(([k, r]) => Number(k) !== id && r === row).length
-          if (hero[row].length + already < ROW_CAP[row]) return { ...a, [id]: row }
-        }
-        // 一巡したら未割当へ戻す
-        return cur ? removeKey(a, id) : a
-      })
+      if (selectedPoolId === id) {
+        setAssign((a) => (id in a ? removeKey(a, id) : a))
+        setSelectedPoolId(null)
+      } else {
+        setSelectedPoolId(id)
+      }
     },
-    [pool.length, expectedDraw, hero, onPickerToggle],
+    [pool.length, expectedDraw, selectedPoolId, onPickerToggle],
+  )
+
+  // 選択中のプールカードが有効か（プールに存在し、ドローが揃っている）。
+  const selectedActive =
+    selectedPoolId !== null &&
+    pool.length === expectedDraw &&
+    mode !== 'fl' &&
+    pool.some((c) => cardId(c) === selectedPoolId)
+
+  /** 選択中カードを除いて数えたとき、この段にまだ空きがあるか。 */
+  const rowHasSpace = useCallback(
+    (row: RowKey) => {
+      const already = Object.entries(assign).filter(
+        ([k, r]) => Number(k) !== selectedPoolId && r === row,
+      ).length
+      return hero[row].length + already < ROW_CAP[row]
+    },
+    [assign, selectedPoolId, hero],
+  )
+
+  // Hero の段をタップ: カード選択中ならそこへ置く。未選択ならピッカーの入力先切替（プレイ/FL）。
+  const onHeroRowTap = useCallback(
+    (row: RowKey) => {
+      if (selectedActive && selectedPoolId !== null) {
+        if (assign[selectedPoolId] === row) {
+          setAssign((a) => removeKey(a, selectedPoolId))
+          setSelectedPoolId(null)
+          return
+        }
+        if (!rowHasSpace(row)) return // 満杯: 選択は維持して別の段を選ばせる
+        setAssign((a) => ({ ...a, [selectedPoolId]: row }))
+        setSelectedPoolId(null)
+        return
+      }
+      if (mode !== 'vs') setTarget({ kind: 'hero', row })
+    },
+    [selectedActive, selectedPoolId, assign, rowHasSpace, mode],
   )
 
   // ---- コミット判定 ----
@@ -445,6 +483,7 @@ export default function App() {
     setHeroDiscards(nd)
     setPool([])
     setAssign({})
+    setSelectedPoolId(null)
     setSugg(null)
     setEv(null)
   }, [commitState.valid, pushHistory, hero, heroDiscards, pool, assign])
@@ -456,6 +495,7 @@ export default function App() {
       if (s.discarded) setHeroDiscards((d) => [...d, ...parseCards(s.discarded!)])
       setPool([])
       setAssign({})
+      setSelectedPoolId(null)
       setSugg(null)
       setEv(null)
     },
@@ -579,6 +619,7 @@ export default function App() {
     setEv(null)
     setVsError(null)
     setVsScored(false)
+    setSelectedPoolId(null)
     setVsVillainHand(null)
     setVsVillainDiscards([])
     setVsHeroIsIP((p) => !p)
@@ -878,8 +919,9 @@ export default function App() {
               row={row}
               cards={hero[row]}
               active={mode !== 'vs' && target.kind === 'hero' && target.row === row}
-              selectable={mode !== 'vs'}
-              onSelect={() => setTarget({ kind: 'hero', row })}
+              selectable={mode !== 'vs' || selectedActive}
+              droppable={selectedActive && rowHasSpace(row)}
+              onSelect={() => onHeroRowTap(row)}
               onRemove={(c) => onPickerToggle(c)}
             />
           ))}
@@ -941,7 +983,7 @@ export default function App() {
                 <div className="pool-card" key={id}>
                   <button
                     type="button"
-                    className="pool-card-btn"
+                    className={`pool-card-btn ${selectedPoolId === id ? 'sel' : ''}`}
                     onClick={(e) => {
                       e.stopPropagation()
                       onPoolCardTap(c)
@@ -1232,6 +1274,7 @@ function BoardRow({
   onRemove,
   compact,
   selectable = true,
+  droppable = false,
 }: {
   lang: Lang
   row: RowKey
@@ -1242,17 +1285,20 @@ function BoardRow({
   compact?: boolean
   /** false で選択先の切替を無効化（対戦モードの Hero 行など）。 */
   selectable?: boolean
+  /** 選択中のプールカードを置ける段（ハイライト表示）。 */
+  droppable?: boolean
 }) {
+  const clickable = selectable || droppable
   return (
     // 行全体をタップで選択先にできるようにする（カード自体のタップは取り除き操作を優先）。
     <div
-      className={`board-row ${selectable ? 'selectable' : ''} ${active ? 'active' : ''} ${compact ? 'compact' : ''}`}
-      onClick={selectable ? onSelect : undefined}
+      className={`board-row ${clickable ? 'selectable' : ''} ${active ? 'active' : ''} ${droppable ? 'droppable' : ''} ${compact ? 'compact' : ''}`}
+      onClick={clickable ? onSelect : undefined}
     >
       <button
         type="button"
         className="board-row-target"
-        onClick={selectable ? onSelect : undefined}
+        onClick={clickable ? onSelect : undefined}
       >
         <span className="row-label">{t(lang, row as MessageKey)}</span>
         <span className="row-hand">{rowHandText(lang, row, cards)}</span>
