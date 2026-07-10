@@ -311,8 +311,26 @@ export function loadGame(useJokers: boolean): PersistedGame | null {
 }
 
 // ---- 対戦モードの通算成績 --------------------------------------------------------
+// v2: ルール構成（種類 × デッキ）ごとに独立して積み上げる。
 
-const VS_STATS_KEY = 'ofc-solver:vsStats:v1'
+/** ルール構成キー（例: "normal-52", "ultimate-54"）。 */
+export type VsConfigKey = `${VariantId}-${'52' | '54'}`
+
+export function vsConfigKey(variantId: VariantId, jokers: boolean): VsConfigKey {
+  return `${variantId}-${jokers ? '54' : '52'}`
+}
+
+export type VsStatsByConfig = Partial<Record<VsConfigKey, VsStats>>
+
+const VS_STATS_KEY_V2 = 'ofc-solver:vsStats:v2'
+const VS_STATS_KEY_V1 = 'ofc-solver:vsStats:v1'
+
+const VS_CONFIG_KEYS: readonly VsConfigKey[] = [
+  'normal-52',
+  'normal-54',
+  'ultimate-52',
+  'ultimate-54',
+]
 
 function parsePosStats(v: unknown): VsPosStats {
   if (typeof v !== 'object' || v === null) return zeroPosStats()
@@ -321,16 +339,33 @@ function parsePosStats(v: unknown): VsPosStats {
   return { hands: num(o.hands), wins: num(o.wins), total: num(o.total) }
 }
 
-/** 旧形式（ポジション別なし）は全体成績のみ引き継ぎ、内訳はゼロから積み上げる。 */
-export function loadVsStats(): VsStats {
-  const raw = readJSON(VS_STATS_KEY)
-  if (typeof raw !== 'object' || raw === null) return emptyVsStats()
-  const o = raw as Record<string, unknown>
-  return { ...parsePosStats(raw), oop: parsePosStats(o.oop), ip: parsePosStats(o.ip) }
+function parseVsStats(v: unknown): VsStats {
+  if (typeof v !== 'object' || v === null) return emptyVsStats()
+  const o = v as Record<string, unknown>
+  return { ...parsePosStats(v), oop: parsePosStats(o.oop), ip: parsePosStats(o.ip) }
 }
 
-export function saveVsStats(stats: VsStats): void {
-  writeJSON(VS_STATS_KEY, stats)
+export function loadVsStatsByConfig(): VsStatsByConfig {
+  const raw = readJSON(VS_STATS_KEY_V2)
+  if (typeof raw === 'object' && raw !== null) {
+    const o = raw as Record<string, unknown>
+    const out: VsStatsByConfig = {}
+    for (const key of VS_CONFIG_KEYS) {
+      if (typeof o[key] === 'object' && o[key] !== null) out[key] = parseVsStats(o[key])
+    }
+    return out
+  }
+  // v1（構成別なし）からの移行: 既定構成（ノーマル / 52枚）の成績として引き継ぐ。
+  const v1 = readJSON(VS_STATS_KEY_V1)
+  if (typeof v1 === 'object' && v1 !== null) {
+    const migrated = parseVsStats(v1)
+    if (migrated.hands > 0) return { 'normal-52': migrated }
+  }
+  return {}
+}
+
+export function saveVsStatsByConfig(stats: VsStatsByConfig): void {
+  writeJSON(VS_STATS_KEY_V2, stats)
 }
 
 /** 初回起動時の言語既定値（ブラウザ設定から推定）。 */

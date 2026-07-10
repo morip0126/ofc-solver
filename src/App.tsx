@@ -38,14 +38,16 @@ import {
   type Precision,
   type VsPosStats,
   type VsStats,
+  type VsStatsByConfig,
   detectLang,
   emptyVsStats,
   loadGame,
   loadSettings,
-  loadVsStats,
+  loadVsStatsByConfig,
   saveGame,
   saveSettings,
-  saveVsStats,
+  saveVsStatsByConfig,
+  vsConfigKey,
 } from './persist'
 
 // ---- 型・ヘルパー -------------------------------------------------------------
@@ -153,7 +155,7 @@ export default function App() {
   const [vsHeroIsIP, setVsHeroIsIP] = useState(boot.game?.vs?.heroIsIP ?? false)
   const [vsBusy, setVsBusy] = useState(false)
   const [vsError, setVsError] = useState<string | null>(null)
-  const [vsStats, setVsStats] = useState<VsStats>(() => loadVsStats())
+  const [vsStatsAll, setVsStatsAll] = useState<VsStatsByConfig>(() => loadVsStatsByConfig())
 
   const suggTask = useRef<PoolTask<SuggestionDTO[]> | null>(null)
   const flTask = useRef<PoolTask<FLResultDTO[]> | null>(null)
@@ -376,26 +378,28 @@ export default function App() {
     [mode, usedIds, canAdd, target],
   )
 
-  // プールのカードをタップ: 選択中の段へ割当（もう一度タップで解除）。
-  // ドローが揃う前、または選択先がドロー自身のときは従来どおり取り除き。
+  // プールのカードをタップ: 置き先を トップ → ミドル → ボトム → 未定 の順に循環させる。
+  // 空きのない段は自動でスキップ。ドローが揃う前は従来どおり取り除き（手入力の修正用）。
   const onPoolCardTap = useCallback(
     (card: Card) => {
       const id = cardId(card)
-      if (pool.length !== expectedDraw || target.kind === 'pool') {
+      if (pool.length !== expectedDraw) {
         onPickerToggle(card)
         return
       }
-      if (target.kind !== 'hero') return
-      const row = target.row
       setAssign((a) => {
-        if (a[id] === row) return removeKey(a, id)
-        // 段の空き容量を超える割当は無視する
-        const already = Object.entries(a).filter(([k, r]) => Number(k) !== id && r === row).length
-        if (hero[row].length + already >= ROW_CAP[row]) return a
-        return { ...a, [id]: row }
+        const cur = a[id]
+        const start = cur ? ROWS.indexOf(cur) + 1 : 0
+        for (let i = start; i < ROWS.length; i++) {
+          const row = ROWS[i]
+          const already = Object.entries(a).filter(([k, r]) => Number(k) !== id && r === row).length
+          if (hero[row].length + already < ROW_CAP[row]) return { ...a, [id]: row }
+        }
+        // 一巡したら未割当へ戻す
+        return cur ? removeKey(a, id) : a
       })
     },
-    [pool.length, expectedDraw, target, hero, onPickerToggle],
+    [pool.length, expectedDraw, hero, onPickerToggle],
   )
 
   // ---- コミット判定 ----
@@ -661,11 +665,19 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, vsVillainHand])
 
+  // 現在のルール構成（種類 × デッキ）の成績バケット。
+  const vsConfig = vsConfigKey(variantId, useJokers)
+  const vsStats = vsStatsAll[vsConfig] ?? emptyVsStats()
+  const vsConfigLabel = `${t(lang, variantId === 'normal' ? 'variantNormal' : 'variantUltimate')} / ${t(lang, useJokers ? 'deck54' : 'deck52')}`
+
   const resetVsStats = useCallback(() => {
-    const zero = emptyVsStats()
-    saveVsStats(zero)
-    setVsStats(zero)
-  }, [])
+    setVsStatsAll((all) => {
+      const next = { ...all }
+      delete next[vsConfig]
+      saveVsStatsByConfig(next)
+      return next
+    })
+  }, [vsConfig])
 
   // ---- 完成時の評価 ----
   const variant = VARIANTS[variantId]
@@ -714,26 +726,28 @@ export default function App() {
   }, [mode, heroFinal, villains, variant])
 
   // ハンド完了時に通算成績へ一度だけ加算する（vsScored は永続化されリロードでも二重加算しない）。
-  // 全体に加えて、そのハンドのポジション（OOP/IP）別にも積み上げる。
+  // 現在のルール構成（種類 × デッキ）のバケットに、全体 + ポジション別で積み上げる。
   useEffect(() => {
     if (!vsResult || vsScored) return
     setVsScored(true)
-    setVsStats((s) => {
+    setVsStatsAll((all) => {
+      const s = all[vsConfig] ?? emptyVsStats()
       const win = vsResult.score > 0 ? 1 : 0
       const bump = (p: VsPosStats): VsPosStats => ({
         hands: p.hands + 1,
         wins: p.wins + win,
         total: p.total + vsResult.score,
       })
-      const next: VsStats = {
+      const bucket: VsStats = {
         ...bump(s),
         oop: vsHeroIsIP ? s.oop : bump(s.oop),
         ip: vsHeroIsIP ? bump(s.ip) : s.ip,
       }
-      saveVsStats(next)
+      const next = { ...all, [vsConfig]: bucket }
+      saveVsStatsByConfig(next)
       return next
     })
-  }, [vsResult, vsScored, vsHeroIsIP])
+  }, [vsResult, vsScored, vsHeroIsIP, vsConfig])
 
   // ---- 描画 ----
   const streetLabel =
@@ -826,7 +840,7 @@ export default function App() {
           <button type="button" className="primary-btn" onClick={dealVs}>
             {t(lang, 'vsDeal')}
           </button>
-          <VsStatsView lang={lang} stats={vsStats} />
+          <VsStatsView lang={lang} stats={vsStats} configLabel={vsConfigLabel} />
           {vsStats.hands > 0 && (
             <button type="button" className="ghost-btn vs-stats-reset" onClick={resetVsStats}>
               {t(lang, 'vsResetStats')}
@@ -863,7 +877,8 @@ export default function App() {
               lang={lang}
               row={row}
               cards={hero[row]}
-              active={target.kind === 'hero' && target.row === row}
+              active={mode !== 'vs' && target.kind === 'hero' && target.row === row}
+              selectable={mode !== 'vs'}
               onSelect={() => setTarget({ kind: 'hero', row })}
               onRemove={(c) => onPickerToggle(c)}
             />
@@ -935,7 +950,7 @@ export default function App() {
                     <CardGlyph card={c} />
                   </button>
                   <span
-                    className={`dest-badge ${autoDiscard ? 'discard' : ''}`}
+                    className={`dest-badge ${autoDiscard ? 'discard' : dest ? `dest-${dest}` : ''}`}
                     style={{ visibility: dest || autoDiscard ? 'visible' : 'hidden' }}
                   >
                     {autoDiscard
@@ -991,7 +1006,7 @@ export default function App() {
           <button type="button" className="primary-btn" onClick={dealVs}>
             {t(lang, 'vsNextHand')}
           </button>
-          <VsStatsView lang={lang} stats={vsStats} />
+          <VsStatsView lang={lang} stats={vsStats} configLabel={vsConfigLabel} />
           <p className="ev-hint">{t(lang, 'vsRules')}</p>
         </section>
       )}
@@ -1216,6 +1231,7 @@ function BoardRow({
   onSelect,
   onRemove,
   compact,
+  selectable = true,
 }: {
   lang: Lang
   row: RowKey
@@ -1224,14 +1240,20 @@ function BoardRow({
   onSelect: () => void
   onRemove: (card: Card) => void
   compact?: boolean
+  /** false で選択先の切替を無効化（対戦モードの Hero 行など）。 */
+  selectable?: boolean
 }) {
   return (
     // 行全体をタップで選択先にできるようにする（カード自体のタップは取り除き操作を優先）。
     <div
-      className={`board-row selectable ${active ? 'active' : ''} ${compact ? 'compact' : ''}`}
-      onClick={onSelect}
+      className={`board-row ${selectable ? 'selectable' : ''} ${active ? 'active' : ''} ${compact ? 'compact' : ''}`}
+      onClick={selectable ? onSelect : undefined}
     >
-      <button type="button" className="board-row-target" onClick={onSelect}>
+      <button
+        type="button"
+        className="board-row-target"
+        onClick={selectable ? onSelect : undefined}
+      >
         <span className="row-label">{t(lang, row as MessageKey)}</span>
         <span className="row-hand">{rowHandText(lang, row, cards)}</span>
       </button>
@@ -1359,13 +1381,24 @@ function vsStatsText(lang: Lang, s: VsPosStats): string {
   })
 }
 
-/** 対戦モードの通算成績（全体 + ポジション別の内訳）。 */
-function VsStatsView({ lang, stats }: { lang: Lang; stats: VsStats }) {
+/** 対戦モードの通算成績（現在のルール構成の全体 + ポジション別の内訳）。 */
+function VsStatsView({
+  lang,
+  stats,
+  configLabel,
+}: {
+  lang: Lang
+  stats: VsStats
+  configLabel: string
+}) {
   if (stats.hands === 0) return null
   return (
     <div className="vs-stats">
       <span>
-        <strong>{t(lang, 'vsStatsTotalLabel')}</strong> {vsStatsText(lang, stats)}
+        <strong>
+          {t(lang, 'vsStatsTotalLabel')}（{configLabel}）
+        </strong>{' '}
+        {vsStatsText(lang, stats)}
       </span>
       {stats.oop.hands > 0 && (
         <span>

@@ -1,5 +1,5 @@
 import { type Card, JOKER_CARDS, type Rank, type Suit, cardId } from '../domain'
-import { isRedSuit, rankChar, suitSymbol } from './format'
+import { rankChar, suitSymbol } from './format'
 
 const SUIT_ORDER: Suit[] = ['s', 'h', 'd', 'c']
 const RANK_ORDER: Rank[] = [14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2]
@@ -31,7 +31,7 @@ export function CardPicker({
               <button
                 type="button"
                 key={id}
-                className={`picker-cell ${isRedSuit(suit) ? 'red' : 'black'} ${isSel ? 'sel' : ''}`}
+                className={`picker-cell suit-${suit} ${isSel ? 'sel' : ''}`}
                 disabled={disabled}
                 aria-pressed={isSel}
                 onClick={() => onToggle(card)}
