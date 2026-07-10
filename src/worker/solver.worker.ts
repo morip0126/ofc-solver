@@ -3,13 +3,17 @@
 import {
   type Board,
   type BoardSuggestion,
+  type CandidateMetric,
   DEFAULT_STAY_BONUS,
   DEFAULT_STAY_BONUS_JOKER,
   type FantasylandResult,
   type VariantId,
   VARIANTS,
   cardToString,
-  estimateEVvsRandom,
+  estimateEVvsRandomStats,
+  evaluateInitialChunk,
+  evaluateStreetChunk,
+  mulberry32,
   parseCards,
   solveFantasyland,
   suggestInitial5,
@@ -64,6 +68,9 @@ export type WorkerRequest =
       variantId: VariantId
       stayBonus?: number
       jokers?: boolean
+      /** bottom 候補の走査範囲 [start, end)。Worker プールでの範囲分割用。省略時は全域。 */
+      bottomRange?: [number, number]
+      topK?: number
     }
   | {
       id: number
@@ -74,13 +81,39 @@ export type WorkerRequest =
       iters: number
       opponents: number
       jokers?: boolean
+      /** 決定論的 PRNG のシード。並列チャンクごとに別シードを渡す。 */
+      seed?: number
+    }
+  | {
+      id: number
+      kind: 'evalInitialChunk'
+      cards: string[]
+      dead: string[]
+      variantId: VariantId
+      indices: number[]
+      iters: number
+      seed: number
+      jokers?: boolean
+    }
+  | {
+      id: number
+      kind: 'evalStreetChunk'
+      board: BoardDTO
+      drawn: string[]
+      dead: string[]
+      variantId: VariantId
+      indices: number[]
+      iters: number
+      seed: number
+      jokers?: boolean
     }
 
 export type WorkerResponse =
   | { id: number; kind: 'progress'; done: number; total: number }
   | { id: number; kind: 'suggestions'; suggestions: SuggestionDTO[] }
   | { id: number; kind: 'fl'; results: FLResultDTO[] }
-  | { id: number; kind: 'ev'; ev: number }
+  | { id: number; kind: 'ev'; ev: number; n: number; m2: number }
+  | { id: number; kind: 'chunk'; results: CandidateMetric[] }
   | { id: number; kind: 'error'; message: string }
 
 function post(res: WorkerResponse): void {
@@ -165,19 +198,54 @@ self.onmessage = (e: MessageEvent<WorkerRequest>) => {
         const results = solveFantasyland(parseCards(msg.cards), variant, {
           stayBonus:
             msg.stayBonus ?? (msg.jokers ? DEFAULT_STAY_BONUS_JOKER : DEFAULT_STAY_BONUS),
-          topK: 3,
+          topK: msg.topK ?? 3,
+          bottomRange: msg.bottomRange,
         })
         post({ id: msg.id, kind: 'fl', results: results.map(flDTO) })
         break
       }
       case 'ev': {
         const board = toBoard(msg.board)
-        const ev = estimateEVvsRandom(board, parseCards(msg.dead), variant, {
+        const stats = estimateEVvsRandomStats(board, parseCards(msg.dead), variant, {
           iters: msg.iters,
           opponents: msg.opponents,
           jokers: msg.jokers,
+          rng: msg.seed !== undefined ? mulberry32(msg.seed) : undefined,
         })
-        post({ id: msg.id, kind: 'ev', ev })
+        post({ id: msg.id, kind: 'ev', ev: stats.mean, n: stats.n, m2: stats.m2 })
+        break
+      }
+      case 'evalInitialChunk': {
+        const results = evaluateInitialChunk(
+          parseCards(msg.cards),
+          parseCards(msg.dead),
+          variant,
+          msg.indices,
+          {
+            iters: msg.iters,
+            seed: msg.seed,
+            jokers: msg.jokers,
+            onProgress: progressReporter(msg.id),
+          },
+        )
+        post({ id: msg.id, kind: 'chunk', results })
+        break
+      }
+      case 'evalStreetChunk': {
+        const results = evaluateStreetChunk(
+          toBoard(msg.board),
+          parseCards(msg.drawn),
+          parseCards(msg.dead),
+          variant,
+          msg.indices,
+          {
+            iters: msg.iters,
+            seed: msg.seed,
+            jokers: msg.jokers,
+            onProgress: progressReporter(msg.id),
+          },
+        )
+        post({ id: msg.id, kind: 'chunk', results })
         break
       }
     }

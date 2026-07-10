@@ -36,8 +36,18 @@
 - FL 継続率: `flStay.ts` の `stayFeasibility` がリステイ可能性を厳密判定（`solveFantasyland` との
   クロスチェックテストで担保）。継続率の再計測は `FL_STAY_ITERS=500000 pnpm vitest run src/domain/flStayRate.test.ts --testTimeout=3600000`。
 - モンテカルロは決定論的 PRNG（`combinatorics.ts` の `mulberry32`）を注入してテストの再現性を確保する。
-- UI は実戦アシスタント（`App.tsx`）: プレイモード（初手→ストリート進行 + 推奨手）と FL モード。
-  Worker プロトコルは `solver.worker.ts`（suggestInitial / suggestStreet / solveFL / ev）。
+- **並列計算**: `src/worker/solverClient.ts` の Worker プールが候補集合をチャンク分割して実行する。
+  分割の入口はドメイン側のチャンク API（`evaluateInitialChunk` / `evaluateStreetChunk`、
+  FL は `solveFantasyland` の `bottomRange`、EV は `estimateEVvsRandomStats` のシード分割 +
+  Chan の公式で統合）。**候補ごとに独立シードの PRNG を使うため分割不変**。この性質は
+  `solverParallel.test.ts` で担保しているので、チャンク API を触ったら必ず維持・更新する。
+- UI は実戦アシスタント（`App.tsx`）: プレイモード（初手→ストリート進行 + 推奨手）、
+  対戦モード（vs ソルバー。ポジション制: OOP が先置き・IP は後追い、ハンドごとに交代。
+  山札進行は `App.tsx` の進行ドライバ effect と `roundOf` の手番ゲート。ソルバーの情報は
+  自身の手札/捨て札 + Hero の公開盤面のみに制限）、FL モード。
+  Worker プロトコルは `solver.worker.ts`（evalInitialChunk / evalStreetChunk / solveFL / ev ほか）。
+  設定・盤面は `persist.ts` が localStorage に自動保存（スキーマ変更時はキーの版数を上げる）。
+  オフライン対応は `vite-plugin-pwa` の Service Worker（`vite.config.ts`）。
 
 ## 注意
 

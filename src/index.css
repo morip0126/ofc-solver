@@ -322,6 +322,12 @@ button {
   min-height: 62px;
 }
 
+/* FL 配牌（13〜17枚）は列数指定なしで並べるため折返しレイアウトにする */
+.pool-cards.wrap {
+  display: flex;
+  flex-wrap: wrap;
+}
+
 .pool-card {
   display: flex;
   flex-direction: column;
@@ -538,6 +544,42 @@ button {
   font-size: 11px;
   color: var(--muted);
   margin: 6px 0 0;
+}
+
+/* EV の 95% 信頼区間（±）表示 */
+.ev-ci {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+/* 対戦モードのポジション表示（OOP=先手 / IP=後手） */
+.pos-badge {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+
+.pos-badge.ip {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* 対戦モードの通算成績（全体 + OOP/IP 内訳） */
+.vs-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 10px;
+}
+
+.vs-stats-reset {
+  margin-top: 8px;
 }
 
 .final-scores {

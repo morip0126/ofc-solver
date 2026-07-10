@@ -11,22 +11,42 @@ import {
   cardToString,
   evaluateArrangement,
   fantasylandCards,
+  makeDeck,
   parseCards,
   royaltiesTotal,
   scoreEvaluated,
   scoreMultiEvaluated,
+  shuffle,
 } from './domain'
 import { type Lang, type MessageKey, t } from './i18n'
 import { CardGlyph } from './ui/CardGlyph'
 import { CardPicker } from './ui/CardPicker'
 import { handLabel } from './ui/handLabel'
 import { evaluate3, evaluate5 } from './domain'
-import type {
-  FLResultDTO,
-  SuggestionDTO,
-  WorkerRequest,
-  WorkerResponse,
-} from './worker/solver.worker'
+import type { FLResultDTO, SuggestionDTO } from './worker/solver.worker'
+import {
+  CanceledError,
+  type EvResult,
+  type PoolTask,
+  estimateEvParallel,
+  solveFLParallel,
+  solverPool,
+  suggestInitialParallel,
+  suggestStreetParallel,
+} from './worker/solverClient'
+import {
+  type Precision,
+  type VsPosStats,
+  type VsStats,
+  detectLang,
+  emptyVsStats,
+  loadGame,
+  loadSettings,
+  loadVsStats,
+  saveGame,
+  saveSettings,
+  saveVsStats,
+} from './persist'
 
 // ---- 型・ヘルパー -------------------------------------------------------------
 
@@ -36,7 +56,7 @@ interface PB {
   bottom: Card[]
 }
 
-type Mode = 'play' | 'fl'
+type Mode = 'play' | 'fl' | 'vs'
 
 type Target =
   | { kind: 'pool' }
@@ -70,26 +90,43 @@ interface Snapshot {
   assign: Record<number, RowKey>
 }
 
-function newWorker(): Worker {
-  return new Worker(new URL('./worker/solver.worker.ts', import.meta.url), { type: 'module' })
+/** 精度設定ごとのモンテカルロ反復数。Worker プールで並列実行される前提の値。 */
+const PRECISION_ITERS: Record<Precision, { initial: number; street: number; ev: number }> = {
+  fast: { initial: 60, street: 80, ev: 150 },
+  standard: { initial: 160, street: 200, ev: 400 },
+  high: { initial: 400, street: 500, ev: 1200 },
+}
+
+/** 対戦モードの完了ラウンド数（0 = 未配置, 1 = 初手済, 2..5 = 各ストリート済）。 */
+function roundOf(count: number): number {
+  return count <= 0 ? 0 : count <= 5 ? 1 : Math.min(5, 1 + Math.floor((count - 5) / 2))
 }
 
 // ---- 本体 ---------------------------------------------------------------------
 
 export default function App() {
-  const [lang, setLang] = useState<Lang>('ja')
-  const [variantId, setVariantId] = useState<VariantId>('normal')
-  const [players, setPlayersState] = useState<2 | 3>(2)
-  const [mode, setModeState] = useState<Mode>('play')
-  const [useJokers, setUseJokersState] = useState(false)
+  // 初回マウント時に localStorage から設定と進行中の盤面を復元する。
+  const [boot] = useState(() => {
+    const settings = loadSettings()
+    return { settings, game: loadGame(settings.useJokers ?? false) }
+  })
 
-  const [hero, setHero] = useState<PB>(emptyBoard)
-  const [heroDiscards, setHeroDiscards] = useState<Card[]>([])
-  const [villains, setVillains] = useState<[PB, PB]>([emptyBoard(), emptyBoard()])
-  const [pool, setPool] = useState<Card[]>([])
-  const [assign, setAssign] = useState<Record<number, RowKey>>({})
+  const [lang, setLang] = useState<Lang>(boot.settings.lang ?? detectLang())
+  const [variantId, setVariantId] = useState<VariantId>(boot.settings.variantId ?? 'normal')
+  const [players, setPlayersState] = useState<2 | 3>(boot.settings.players ?? 2)
+  const [mode, setModeState] = useState<Mode>(boot.settings.mode ?? 'play')
+  const [useJokers, setUseJokersState] = useState(boot.settings.useJokers ?? false)
+  const [precision, setPrecision] = useState<Precision>(boot.settings.precision ?? 'standard')
+
+  const [hero, setHero] = useState<PB>(boot.game?.hero ?? emptyBoard)
+  const [heroDiscards, setHeroDiscards] = useState<Card[]>(boot.game?.heroDiscards ?? [])
+  const [villains, setVillains] = useState<[PB, PB]>(
+    boot.game?.villains ?? [emptyBoard(), emptyBoard()],
+  )
+  const [pool, setPool] = useState<Card[]>(boot.game?.pool ?? [])
+  const [assign, setAssign] = useState<Record<number, RowKey>>(boot.game?.assign ?? {})
   const [target, setTarget] = useState<Target>({ kind: 'pool' })
-  const [history, setHistory] = useState<Snapshot[]>([])
+  const [history, setHistory] = useState<Snapshot[]>(boot.game?.history ?? [])
 
   const [sugg, setSugg] = useState<SuggestionDTO[] | null>(null)
   const [suggBusy, setSuggBusy] = useState(false)
@@ -100,19 +137,37 @@ export default function App() {
   const [flBusy, setFlBusy] = useState(false)
   const [flError, setFlError] = useState<string | null>(null)
 
-  const [ev, setEv] = useState<number | null>(null)
+  const [ev, setEv] = useState<EvResult | null>(null)
   const [evBusy, setEvBusy] = useState(false)
+  const [flProgress, setFlProgress] = useState(0)
 
-  const suggWorker = useRef<Worker | null>(null)
-  const flWorker = useRef<Worker | null>(null)
-  const evWorker = useRef<Worker | null>(null)
-  const reqId = useRef(0)
+  // ---- 対戦モード（vs ソルバー）----
+  const [vsDeck, setVsDeck] = useState<Card[]>(boot.game?.vs?.deck ?? [])
+  const [vsVillainHand, setVsVillainHand] = useState<Card[] | null>(
+    boot.game?.vs?.villainHand ?? null,
+  )
+  const [vsVillainDiscards, setVsVillainDiscards] = useState<Card[]>(
+    boot.game?.vs?.villainDiscards ?? [],
+  )
+  const [vsScored, setVsScored] = useState(boot.game?.vs?.scored ?? false)
+  const [vsHeroIsIP, setVsHeroIsIP] = useState(boot.game?.vs?.heroIsIP ?? false)
+  const [vsBusy, setVsBusy] = useState(false)
+  const [vsError, setVsError] = useState<string | null>(null)
+  const [vsStats, setVsStats] = useState<VsStats>(() => loadVsStats())
+
+  const suggTask = useRef<PoolTask<SuggestionDTO[]> | null>(null)
+  const flTask = useRef<PoolTask<FLResultDTO[]> | null>(null)
+  const evTask = useRef<PoolTask<EvResult> | null>(null)
+  const vsTask = useRef<PoolTask<SuggestionDTO[]> | null>(null)
 
   useEffect(() => {
+    // Worker プールを先に温めて初回推奨の体感を短くする。
+    solverPool.warmup()
     return () => {
-      suggWorker.current?.terminate()
-      flWorker.current?.terminate()
-      evWorker.current?.terminate()
+      suggTask.current?.cancel()
+      flTask.current?.cancel()
+      evTask.current?.cancel()
+      vsTask.current?.cancel()
     }
   }, [])
 
@@ -122,7 +177,15 @@ export default function App() {
     [villains, players],
   )
   const heroCount = boardCount(hero)
-  const expectedDraw = mode === 'play' ? (heroCount === 0 ? 5 : heroCount >= 13 ? 0 : 3) : FL_MAX
+  const expectedDraw = mode === 'fl' ? FL_MAX : heroCount === 0 ? 5 : heroCount >= 13 ? 0 : 3
+  // 対戦モードでハンドが進行中か（山札・配牌・盤面のいずれかにカードがある）。
+  const vsHandActive =
+    mode === 'vs' &&
+    (vsDeck.length > 0 ||
+      pool.length > 0 ||
+      heroCount > 0 ||
+      vsVillainHand !== null ||
+      boardCount(villains[0]) > 0)
 
   const dead = useMemo(
     () => [...shownVillains.flatMap(boardCards), ...heroDiscards],
@@ -155,6 +218,29 @@ export default function App() {
   const poolCodes = useMemo(() => codesOf(pool), [pool])
   const deadCodes = useMemo(() => codesOf(dead), [dead])
 
+  // ---- 永続化（設定・進行中の盤面）----
+  useEffect(() => {
+    saveSettings({ lang, variantId, players, mode, useJokers, precision })
+  }, [lang, variantId, players, mode, useJokers, precision])
+
+  useEffect(() => {
+    saveGame({
+      hero,
+      heroDiscards,
+      villains,
+      pool,
+      assign,
+      history,
+      vs: {
+        deck: vsDeck,
+        villainHand: vsVillainHand,
+        villainDiscards: vsVillainDiscards,
+        scored: vsScored,
+        heroIsIP: vsHeroIsIP,
+      },
+    })
+  }, [hero, heroDiscards, villains, pool, assign, history, vsDeck, vsVillainHand, vsVillainDiscards, vsScored, vsHeroIsIP])
+
   // ---- 入力操作 ----
   const setPlayers = useCallback((n: 2 | 3) => {
     setPlayersState(n)
@@ -162,18 +248,7 @@ export default function App() {
     setTarget({ kind: 'pool' })
   }, [])
 
-  const setMode = useCallback((m: Mode) => {
-    setModeState(m)
-    setPool([])
-    setAssign({})
-    setSugg(null)
-    setFlResults(null)
-    setFlError(null)
-    setEv(null)
-    setTarget({ kind: 'pool' })
-  }, [])
-
-  const resetAll = useCallback(() => {
+  const clearAll = useCallback(() => {
     setHero(emptyBoard())
     setHeroDiscards([])
     setVillains([emptyBoard(), emptyBoard()])
@@ -184,15 +259,48 @@ export default function App() {
     setFlResults(null)
     setEv(null)
     setTarget({ kind: 'pool' })
+    setVsDeck([])
+    setVsVillainHand(null)
+    setVsVillainDiscards([])
+    setVsScored(false)
+    setVsError(null)
   }, [])
+
+  const setMode = useCallback(
+    (m: Mode) => {
+      if (m === mode) return
+      // 対戦モードは専用のデッキ進行を持つため、跨ぐ切替では盤面をクリアする。
+      if (m === 'vs' || mode === 'vs') {
+        if (usedIds.size > 0 && !window.confirm(t(lang, 'confirmModeSwitch'))) return
+        clearAll()
+      }
+      setModeState(m)
+      setPool([])
+      setAssign({})
+      setSugg(null)
+      setFlResults(null)
+      setFlError(null)
+      setEv(null)
+      setTarget({ kind: 'pool' })
+    },
+    [mode, usedIds, lang, clearAll],
+  )
+
+  // リセットは破壊的なので、カードが置かれているときは確認してから。
+  const resetAll = useCallback(() => {
+    if (usedIds.size > 0 && !window.confirm(t(lang, 'confirmReset'))) return
+    clearAll()
+  }, [usedIds, lang, clearAll])
 
   // デッキ切替（ジョーカー有無）は盤面のカードと整合しなくなるため全リセットする。
   const setUseJokers = useCallback(
     (on: boolean) => {
+      if (on === useJokers) return
+      if (usedIds.size > 0 && !window.confirm(t(lang, 'confirmDeckSwitch'))) return
       setUseJokersState(on)
-      resetAll()
+      clearAll()
     },
-    [resetAll],
+    [useJokers, usedIds, lang, clearAll],
   )
 
   const pushHistory = useCallback(() => {
@@ -217,6 +325,8 @@ export default function App() {
 
   const onPickerToggle = useCallback(
     (card: Card) => {
+      // 対戦モードでは配牌は自動なので手動での追加/取り除きは無効。
+      if (mode === 'vs') return
       const id = cardId(card)
       if (usedIds.has(id)) {
         // どこにあっても取り除く
@@ -263,7 +373,7 @@ export default function App() {
         })
       }
     },
-    [usedIds, canAdd, target],
+    [mode, usedIds, canAdd, target],
   )
 
   // プールのカードをタップ: 選択中の段へ割当（もう一度タップで解除）。
@@ -291,8 +401,16 @@ export default function App() {
   // ---- コミット判定 ----
   // 初手は5枚すべてを段へ割当。ストリートは2枚を割当し、残る1枚が自動的に捨て札になる。
   const commitState = useMemo(() => {
-    if (mode !== 'play' || pool.length === 0 || pool.length !== expectedDraw) {
+    if (mode === 'fl' || pool.length === 0 || pool.length !== expectedDraw) {
       return { valid: false }
+    }
+    // 対戦モード: ポジションに従って手番を守る。
+    // OOP の Hero は相手が同ラウンドに追いつくまで、IP の Hero は相手が次を置くまで待つ。
+    if (mode === 'vs') {
+      if (vsBusy || vsVillainHand) return { valid: false }
+      const hr = roundOf(heroCount)
+      const vr = roundOf(boardCount(villains[0]))
+      if (vsHeroIsIP ? vr !== hr + 1 : vr !== hr) return { valid: false }
     }
     const rowAdd: Record<RowKey, number> = { top: 0, middle: 0, bottom: 0 }
     let assigned = 0
@@ -307,7 +425,7 @@ export default function App() {
     }
     const need = heroCount === 0 ? pool.length : pool.length - 1
     return { valid: assigned === need }
-  }, [mode, pool, expectedDraw, assign, hero, heroCount])
+  }, [mode, vsBusy, vsVillainHand, vsHeroIsIP, villains, pool, expectedDraw, assign, hero, heroCount])
 
   const commit = useCallback(() => {
     if (!commitState.valid) return
@@ -342,8 +460,8 @@ export default function App() {
 
   // ---- 推奨手の自動計算 ----
   useEffect(() => {
-    suggWorker.current?.terminate()
-    suggWorker.current = null
+    suggTask.current?.cancel()
+    suggTask.current = null
     setSugg(null)
     setSuggBusy(false)
     setSuggError(null)
@@ -355,114 +473,204 @@ export default function App() {
     const openSlots = 13 - heroCount
     if (heroCount > 0 && openSlots < 2) return
 
-    const id = ++reqId.current
-    const worker = newWorker()
-    suggWorker.current = worker
     setSuggBusy(true)
-
-    worker.onmessage = (e: MessageEvent<WorkerResponse>) => {
-      const msg = e.data
-      if (msg.id !== reqId.current) return
-      if (msg.kind === 'progress') {
-        setSuggProgress(msg.total > 0 ? msg.done / msg.total : 0)
-        return
-      }
-      setSuggBusy(false)
-      if (msg.kind === 'suggestions') setSugg(msg.suggestions)
-      else if (msg.kind === 'error') setSuggError(msg.message)
-    }
-
-    const req: WorkerRequest =
+    const iters = PRECISION_ITERS[precision]
+    const task =
       heroCount === 0
-        ? {
-            id,
-            kind: 'suggestInitial',
-            cards: pool.map(cardToString),
-            dead: dead.map(cardToString),
-            variantId,
-            jokers: useJokers,
-          }
-        : {
-            id,
-            kind: 'suggestStreet',
-            board: { top: hero.top.map(cardToString), middle: hero.middle.map(cardToString), bottom: hero.bottom.map(cardToString) },
-            drawn: pool.map(cardToString),
-            dead: dead.map(cardToString),
-            variantId,
-            jokers: useJokers,
-          }
-    worker.postMessage(req)
+        ? suggestInitialParallel(
+            { cards: pool, dead, variantId, jokers: useJokers, iters: iters.initial },
+            setSuggProgress,
+          )
+        : suggestStreetParallel(
+            { board: hero, drawn: pool, dead, variantId, jokers: useJokers, iters: iters.street },
+            setSuggProgress,
+          )
+    suggTask.current = task
+    task.promise
+      .then((suggestions) => {
+        if (suggTask.current !== task) return
+        setSugg(suggestions)
+        setSuggBusy(false)
+      })
+      .catch((err) => {
+        if (suggTask.current !== task) return
+        setSuggBusy(false)
+        if (!(err instanceof CanceledError)) {
+          setSuggError(err instanceof Error ? err.message : String(err))
+        }
+      })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, heroCodes, poolCodes, deadCodes, variantId, useJokers])
+  }, [mode, heroCodes, poolCodes, deadCodes, variantId, useJokers, precision])
 
   // 盤面・設定が変わったら EV はリセット
   useEffect(() => {
     setEv(null)
-    evWorker.current?.terminate()
-    evWorker.current = null
+    evTask.current?.cancel()
+    evTask.current = null
     setEvBusy(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [heroCodes, deadCodes, variantId, players, mode, useJokers])
+  }, [heroCodes, deadCodes, variantId, players, mode, useJokers, precision])
 
   const estimateEv = useCallback(() => {
-    evWorker.current?.terminate()
-    const worker = newWorker()
-    evWorker.current = worker
+    evTask.current?.cancel()
     setEvBusy(true)
     setEv(null)
-    const id = ++reqId.current
-    worker.onmessage = (e: MessageEvent<WorkerResponse>) => {
-      const msg = e.data
-      if (msg.id !== id) return
-      if (msg.kind === 'ev') setEv(msg.ev)
-      setEvBusy(false)
-      worker.terminate()
-      if (evWorker.current === worker) evWorker.current = null
-    }
-    const req: WorkerRequest = {
-      id,
-      kind: 'ev',
-      board: { top: hero.top.map(cardToString), middle: hero.middle.map(cardToString), bottom: hero.bottom.map(cardToString) },
-      dead: dead.map(cardToString),
+    const task = estimateEvParallel({
+      board: hero,
+      dead,
       variantId,
-      iters: 200,
-      opponents: players - 1,
       jokers: useJokers,
-    }
-    worker.postMessage(req)
-  }, [hero, dead, variantId, players, useJokers])
+      opponents: players - 1,
+      iters: PRECISION_ITERS[precision].ev,
+    })
+    evTask.current = task
+    task.promise
+      .then((res) => {
+        if (evTask.current !== task) return
+        setEv(res)
+        setEvBusy(false)
+      })
+      .catch((err) => {
+        if (evTask.current !== task) return
+        setEvBusy(false)
+        if (!(err instanceof CanceledError)) setEv(null)
+      })
+  }, [hero, dead, variantId, players, useJokers, precision])
 
   const solveFL = useCallback(() => {
-    flWorker.current?.terminate()
-    const worker = newWorker()
-    flWorker.current = worker
+    flTask.current?.cancel()
     setFlBusy(true)
     setFlResults(null)
     setFlError(null)
-    const id = ++reqId.current
-    worker.onmessage = (e: MessageEvent<WorkerResponse>) => {
-      const msg = e.data
-      if (msg.id !== id) return
-      setFlBusy(false)
-      if (msg.kind === 'fl') setFlResults(msg.results)
-      else if (msg.kind === 'error') setFlError(msg.message)
-      worker.terminate()
-      if (flWorker.current === worker) flWorker.current = null
-    }
-    const req: WorkerRequest = {
-      id,
-      kind: 'solveFL',
-      cards: pool.map(cardToString),
-      variantId,
-      jokers: useJokers,
-    }
-    worker.postMessage(req)
+    setFlProgress(0)
+    const task = solveFLParallel({ cards: pool, variantId, jokers: useJokers }, setFlProgress)
+    flTask.current = task
+    task.promise
+      .then((results) => {
+        if (flTask.current !== task) return
+        setFlResults(results)
+        setFlBusy(false)
+      })
+      .catch((err) => {
+        if (flTask.current !== task) return
+        setFlBusy(false)
+        if (!(err instanceof CanceledError)) {
+          setFlError(err instanceof Error ? err.message : String(err))
+        }
+      })
   }, [pool, variantId, useJokers])
+
+  // ---- 対戦モード（vs ソルバー）----
+
+  // 新しいハンドを配る。ポジション（先手/後手）はハンドごとに交代し、
+  // 実際の配札はポジションに従って進行ドライバが行う。
+  const dealVs = useCallback(() => {
+    const deck = shuffle(makeDeck(useJokers))
+    setHero(emptyBoard())
+    setHeroDiscards([])
+    setVillains([emptyBoard(), emptyBoard()])
+    setPool([])
+    setAssign({})
+    setHistory([])
+    setEv(null)
+    setVsError(null)
+    setVsScored(false)
+    setVsVillainHand(null)
+    setVsVillainDiscards([])
+    setVsHeroIsIP((p) => !p)
+    setVsDeck(deck)
+    setTarget({ kind: 'pool' })
+  }, [useJokers])
+
+  // 対戦モードの進行ドライバ。ポジションに従って山札から手札を配る。
+  // 先手（OOP）が各ラウンドを先に置き、後手（IP）は相手の同ラウンド完了を見てから置く。
+  // Hero の手札は自分の前ラウンド確定後すぐ配る（相手の思考中に検討できる）が、
+  // 確定は commitState の手番ゲートが守る。
+  useEffect(() => {
+    if (mode !== 'vs' || vsDeck.length === 0) return
+    if (vsVillainHand) return // ソルバーの配置待ち
+    const hr = roundOf(heroCount)
+    const vr = roundOf(boardCount(villains[0]))
+    if (pool.length === 0 && hr < 5) {
+      const n = hr === 0 ? 5 : 3
+      setPool(vsDeck.slice(0, n))
+      setVsDeck(vsDeck.slice(n))
+      return
+    }
+    // ソルバーの手番: Hero が IP なら先行（vr === hr）、Hero が OOP なら追走（hr === vr + 1）。
+    if (vr < 5 && (vsHeroIsIP ? vr === hr : hr === vr + 1)) {
+      const n = vr === 0 ? 5 : 3
+      setVsVillainHand(vsDeck.slice(0, n))
+      setVsDeck(vsDeck.slice(n))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, vsDeck, vsVillainHand, heroCount, villains, pool.length, vsHeroIsIP])
+
+  // ソルバーの思考: 手札（vsVillainHand）があれば推奨エンジンで配置を決める。
+  // ソルバーが知れるのは自分の盤面・手札・捨て札と、Hero の公開盤面のみ（Hero の捨て札は見ない）。
+  useEffect(() => {
+    if (mode !== 'vs' || !vsVillainHand) {
+      setVsBusy(false)
+      return
+    }
+    setVsBusy(true)
+    const villainBoard = villains[0]
+    const deadForVillain = [...boardCards(hero), ...vsVillainDiscards]
+    const iters = PRECISION_ITERS[precision]
+    const task =
+      boardCount(villainBoard) === 0
+        ? suggestInitialParallel(
+            { cards: vsVillainHand, dead: deadForVillain, variantId, jokers: useJokers, iters: iters.initial },
+          )
+        : suggestStreetParallel(
+            { board: villainBoard, drawn: vsVillainHand, dead: deadForVillain, variantId, jokers: useJokers, iters: iters.street },
+          )
+    vsTask.current = task
+    task.promise
+      .then((suggs) => {
+        if (vsTask.current !== task) return
+        setVsBusy(false)
+        const top = suggs[0]
+        if (!top) {
+          setVsError('no arrangement')
+          return
+        }
+        setVillains((vs) => [
+          { top: parseCards(top.top), middle: parseCards(top.middle), bottom: parseCards(top.bottom) },
+          vs[1],
+        ])
+        if (top.discarded) {
+          const discarded = parseCards(top.discarded)
+          setVsVillainDiscards((d) => [...d, ...discarded])
+        }
+        setVsVillainHand(null)
+      })
+      .catch((err) => {
+        if (vsTask.current !== task) return
+        setVsBusy(false)
+        if (!(err instanceof CanceledError)) {
+          setVsError(err instanceof Error ? err.message : String(err))
+        }
+      })
+    return () => {
+      if (vsTask.current === task) {
+        task.cancel()
+        vsTask.current = null
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, vsVillainHand])
+
+  const resetVsStats = useCallback(() => {
+    const zero = emptyVsStats()
+    saveVsStats(zero)
+    setVsStats(zero)
+  }, [])
 
   // ---- 完成時の評価 ----
   const variant = VARIANTS[variantId]
   const heroFinal = useMemo(() => {
-    if (mode !== 'play' || heroCount !== 13) return null
+    if (mode === 'fl' || heroCount !== 13) return null
     if (hero.top.length !== 3 || hero.middle.length !== 5 || hero.bottom.length !== 5) return null
     const evaluated = evaluateArrangement(hero)
     return {
@@ -483,6 +691,49 @@ export default function App() {
     const pairwise = evs.map((v) => scoreEvaluated(heroFinal.evaluated, v, variant))
     return { total: totals[0], pairwise }
   }, [heroFinal, shownVillains, variant])
+
+  // 対戦モードの結果（両者13枚完成時のみ）。
+  const vsResult = useMemo(() => {
+    if (mode !== 'vs' || !heroFinal) return null
+    const v = villains[0]
+    if (v.top.length !== 3 || v.middle.length !== 5 || v.bottom.length !== 5) return null
+    const vEval = evaluateArrangement(v)
+    return {
+      score: scoreEvaluated(heroFinal.evaluated, vEval, variant),
+      hero: {
+        fouled: heroFinal.evaluated.fouled,
+        royalties: heroFinal.evaluated.fouled ? 0 : heroFinal.royalties,
+        fl: heroFinal.evaluated.fouled ? 0 : heroFinal.flCards,
+      },
+      villain: {
+        fouled: vEval.fouled,
+        royalties: vEval.fouled ? 0 : royaltiesTotal(vEval),
+        fl: vEval.fouled ? 0 : fantasylandCards(vEval, variant),
+      },
+    }
+  }, [mode, heroFinal, villains, variant])
+
+  // ハンド完了時に通算成績へ一度だけ加算する（vsScored は永続化されリロードでも二重加算しない）。
+  // 全体に加えて、そのハンドのポジション（OOP/IP）別にも積み上げる。
+  useEffect(() => {
+    if (!vsResult || vsScored) return
+    setVsScored(true)
+    setVsStats((s) => {
+      const win = vsResult.score > 0 ? 1 : 0
+      const bump = (p: VsPosStats): VsPosStats => ({
+        hands: p.hands + 1,
+        wins: p.wins + win,
+        total: p.total + vsResult.score,
+      })
+      const next: VsStats = {
+        ...bump(s),
+        oop: vsHeroIsIP ? s.oop : bump(s.oop),
+        ip: vsHeroIsIP ? bump(s.ip) : s.ip,
+      }
+      saveVsStats(next)
+      return next
+    })
+  }, [vsResult, vsScored, vsHeroIsIP])
 
   // ---- 描画 ----
   const streetLabel =
@@ -529,6 +780,14 @@ export default function App() {
             <option value={3}>{t(lang, 'players3')}</option>
           </select>
         </label>
+        <label className="ctrl-select">
+          {t(lang, 'precision')}
+          <select value={precision} onChange={(e) => setPrecision(e.target.value as Precision)}>
+            <option value="fast">{t(lang, 'precisionFast')}</option>
+            <option value="standard">{t(lang, 'precisionStandard')}</option>
+            <option value="high">{t(lang, 'precisionHigh')}</option>
+          </select>
+        </label>
         <div className="mode-toggle" role="group">
           <button
             type="button"
@@ -537,12 +796,20 @@ export default function App() {
           >
             {t(lang, 'modePlay')}
           </button>
+          <button type="button" className={mode === 'vs' ? 'on' : ''} onClick={() => setMode('vs')}>
+            {t(lang, 'modeVs')}
+          </button>
           <button type="button" className={mode === 'fl' ? 'on' : ''} onClick={() => setMode('fl')}>
             {t(lang, 'modeFL')}
           </button>
         </div>
         <div className="spacer" />
-        <button type="button" className="ghost-btn" onClick={undo} disabled={history.length === 0}>
+        <button
+          type="button"
+          className="ghost-btn"
+          onClick={undo}
+          disabled={history.length === 0 || mode === 'vs'}
+        >
           {t(lang, 'undo')}
         </button>
         <button type="button" className="ghost-btn" onClick={resetAll}>
@@ -550,10 +817,33 @@ export default function App() {
         </button>
       </div>
 
-      {mode === 'play' && (
+      {mode === 'vs' && !vsHandActive && (
+        <section className="panel">
+          <div className="panel-head">
+            <span className="panel-title">{t(lang, 'modeVs')}</span>
+          </div>
+          <p className="hint">{t(lang, 'vsIntro')}</p>
+          <button type="button" className="primary-btn" onClick={dealVs}>
+            {t(lang, 'vsDeal')}
+          </button>
+          <VsStatsView lang={lang} stats={vsStats} />
+          {vsStats.hands > 0 && (
+            <button type="button" className="ghost-btn vs-stats-reset" onClick={resetVsStats}>
+              {t(lang, 'vsResetStats')}
+            </button>
+          )}
+        </section>
+      )}
+
+      {(mode === 'play' || vsHandActive) && (
         <section className="panel hero-panel">
           <div className="panel-head">
             <span className="panel-title">{t(lang, 'hero')}</span>
+            {mode === 'vs' && (
+              <span className={`pos-badge ${vsHeroIsIP ? 'ip' : ''}`}>
+                {t(lang, vsHeroIsIP ? 'vsPosIP' : 'vsPosOOP')}
+              </span>
+            )}
             <span className="street-label">{streetLabel}</span>
             {heroFinal && (
               <span className={`final-chips ${heroFinal.evaluated.fouled ? 'foul' : ''}`}>
@@ -591,7 +881,7 @@ export default function App() {
         </section>
       )}
 
-      {mode === 'play' && heroCount < 13 && (
+      {(mode === 'play' || vsHandActive) && heroCount < 13 && (
         <section
           className={`panel pool-panel selectable ${target.kind === 'pool' ? 'active' : ''}`}
           onClick={() => setTarget({ kind: 'pool' })}
@@ -605,7 +895,16 @@ export default function App() {
           <p className="hint pool-hint">
             {pool.length < expectedDraw
               ? t(lang, 'drawPrompt', { n: expectedDraw - pool.length })
-              : t(lang, heroCount === 0 ? 'assignHintInitial' : 'assignHintStreet')}
+              : t(
+                  lang,
+                  mode === 'vs'
+                    ? heroCount === 0
+                      ? 'vsAssignHintInitial'
+                      : 'vsAssignHintStreet'
+                    : heroCount === 0
+                      ? 'assignHintInitial'
+                      : 'assignHintStreet',
+                )}
           </p>
           {/* ドロー枚数分の固定グリッド。割当バッジのスペースを常に確保し、
               選択前後でレイアウトを変えない。カードのタップ = 選択中の段へ割当。 */}
@@ -648,8 +947,52 @@ export default function App() {
             })}
           </div>
           <button type="button" className="primary-btn" disabled={!commitState.valid} onClick={commit}>
-            {t(lang, 'commit')}
+            {mode === 'vs' && (vsBusy || vsVillainHand)
+              ? t(lang, 'vsWaitingVillain')
+              : t(lang, 'commit')}
           </button>
+        </section>
+      )}
+
+      {mode === 'vs' && vsResult && (
+        <section className="panel">
+          <div className="panel-head">
+            <span className="panel-title">
+              {vsResult.score > 0
+                ? t(lang, 'vsResultWin')
+                : vsResult.score < 0
+                  ? t(lang, 'vsResultLose')
+                  : t(lang, 'vsResultTie')}
+            </span>
+            <span className={`pos-badge ${vsHeroIsIP ? 'ip' : ''}`}>
+              {t(lang, vsHeroIsIP ? 'vsPosIP' : 'vsPosOOP')}
+            </span>
+            <span className="street-label">
+              {t(lang, 'vsScore')} <SignedNumber value={vsResult.score} />
+            </span>
+          </div>
+          <div className="final-scores">
+            {(
+              [
+                [t(lang, 'vsYou'), vsResult.hero],
+                [t(lang, 'solverName'), vsResult.villain],
+              ] as const
+            ).map(([name, side]) => (
+              <span key={name}>
+                {name}:{' '}
+                {side.fouled
+                  ? t(lang, 'fouled')
+                  : `${t(lang, 'royalties')} ${side.royalties} / FL ${
+                      side.fl > 0 ? t(lang, 'flCards', { n: side.fl }) : t(lang, 'flNone')
+                    }`}
+              </span>
+            ))}
+          </div>
+          <button type="button" className="primary-btn" onClick={dealVs}>
+            {t(lang, 'vsNextHand')}
+          </button>
+          <VsStatsView lang={lang} stats={vsStats} />
+          <p className="ev-hint">{t(lang, 'vsRules')}</p>
         </section>
       )}
 
@@ -698,7 +1041,10 @@ export default function App() {
               <dt>{t(lang, 'ev')}</dt>
               <dd>
                 {ev !== null ? (
-                  <SignedNumber value={ev} />
+                  <>
+                    <SignedNumber value={ev.mean} />
+                    {ev.ci95 > 0 && <span className="ev-ci"> ±{ev.ci95.toFixed(1)}</span>}
+                  </>
                 ) : evBusy ? (
                   t(lang, 'estimatingEv')
                 ) : (
@@ -739,7 +1085,7 @@ export default function App() {
           </div>
           <p className="hint">{t(lang, 'flPoolPrompt')}</p>
           {pool.length > 0 && (
-            <div className="pool-cards">
+            <div className="pool-cards wrap">
               {pool.map((c) => (
                 <button
                   type="button"
@@ -760,6 +1106,17 @@ export default function App() {
           >
             {flBusy ? t(lang, 'flSolving') : t(lang, 'flSolve')}
           </button>
+          {flBusy && (
+            <div className="progress-line">
+              <span>{t(lang, 'computing', { pct: Math.round(flProgress * 100) })}</span>
+              <div className="progress-bar">
+                <div
+                  className="progress-fill"
+                  style={{ width: `${Math.round(flProgress * 100)}%` }}
+                />
+              </div>
+            </div>
+          )}
           {flError && <p className="hint error">{t(lang, 'errorPrefix', { msg: flError })}</p>}
         </section>
       )}
@@ -791,29 +1148,48 @@ export default function App() {
         </section>
       )}
 
-      {shownVillains.map((v, idx) => (
-        <section className="panel villain-panel" key={idx}>
-          <div className="panel-head">
-            <span className="panel-title">{t(lang, 'villainN', { n: idx + 1 })}</span>
-            <span className="street-label">{boardCount(v)}/13</span>
-          </div>
-          {ROWS.map((row) => (
-            <BoardRow
-              key={row}
-              lang={lang}
-              row={row}
-              cards={v[row]}
-              active={target.kind === 'villain' && target.idx === idx && target.row === row}
-              onSelect={() => setTarget({ kind: 'villain', idx, row })}
-              onRemove={(c) => onPickerToggle(c)}
-              compact
-            />
+      {mode === 'vs'
+        ? vsHandActive && (
+            <section className="panel villain-panel">
+              <div className="panel-head">
+                <span className="panel-title">{t(lang, 'solverName')}</span>
+                {vsBusy && <span className="street-label">{t(lang, 'vsThinking')}</span>}
+                <span className="street-label">{boardCount(villains[0])}/13</span>
+              </div>
+              <ResultRows
+                lang={lang}
+                top={villains[0].top}
+                middle={villains[0].middle}
+                bottom={villains[0].bottom}
+              />
+              {vsError && <p className="hint error">{t(lang, 'errorPrefix', { msg: vsError })}</p>}
+            </section>
+          )
+        : shownVillains.map((v, idx) => (
+            <section className="panel villain-panel" key={idx}>
+              <div className="panel-head">
+                <span className="panel-title">{t(lang, 'villainN', { n: idx + 1 })}</span>
+                <span className="street-label">{boardCount(v)}/13</span>
+              </div>
+              {ROWS.map((row) => (
+                <BoardRow
+                  key={row}
+                  lang={lang}
+                  row={row}
+                  cards={v[row]}
+                  active={target.kind === 'villain' && target.idx === idx && target.row === row}
+                  onSelect={() => setTarget({ kind: 'villain', idx, row })}
+                  onRemove={(c) => onPickerToggle(c)}
+                  compact
+                />
+              ))}
+            </section>
           ))}
-        </section>
-      ))}
 
-      <p className="hint">{t(lang, 'targetHint')}</p>
-      <CardPicker selected={usedIds} canAdd={canAdd} onToggle={onPickerToggle} jokers={useJokers} />
+      {mode !== 'vs' && <p className="hint">{t(lang, 'targetHint')}</p>}
+      {mode !== 'vs' && (
+        <CardPicker selected={usedIds} canAdd={canAdd} onToggle={onPickerToggle} jokers={useJokers} />
+      )}
     </main>
   )
 }
@@ -971,6 +1347,36 @@ function SuggestionView({
           {t(lang, 'foulRisk')} {(suggestion.foulProb * 100).toFixed(0)}%
         </span>
       </div>
+    </div>
+  )
+}
+
+function vsStatsText(lang: Lang, s: VsPosStats): string {
+  return t(lang, 'vsStatsBody', {
+    hands: s.hands,
+    wr: s.hands > 0 ? Math.round((s.wins / s.hands) * 100) : 0,
+    total: `${s.total >= 0 ? '+' : ''}${s.total}`,
+  })
+}
+
+/** 対戦モードの通算成績（全体 + ポジション別の内訳）。 */
+function VsStatsView({ lang, stats }: { lang: Lang; stats: VsStats }) {
+  if (stats.hands === 0) return null
+  return (
+    <div className="vs-stats">
+      <span>
+        <strong>{t(lang, 'vsStatsTotalLabel')}</strong> {vsStatsText(lang, stats)}
+      </span>
+      {stats.oop.hands > 0 && (
+        <span>
+          {t(lang, 'vsPosOOP')} {vsStatsText(lang, stats.oop)}
+        </span>
+      )}
+      {stats.ip.hands > 0 && (
+        <span>
+          {t(lang, 'vsPosIP')} {vsStatsText(lang, stats.ip)}
+        </span>
+      )}
     </div>
   )
 }
