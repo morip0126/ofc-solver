@@ -36,8 +36,10 @@ import {
 } from './worker/solverClient'
 import {
   type Precision,
+  type VsPosStats,
   type VsStats,
   detectLang,
+  emptyVsStats,
   loadGame,
   loadSettings,
   loadVsStats,
@@ -660,7 +662,7 @@ export default function App() {
   }, [mode, vsVillainHand])
 
   const resetVsStats = useCallback(() => {
-    const zero: VsStats = { hands: 0, wins: 0, total: 0 }
+    const zero = emptyVsStats()
     saveVsStats(zero)
     setVsStats(zero)
   }, [])
@@ -712,19 +714,26 @@ export default function App() {
   }, [mode, heroFinal, villains, variant])
 
   // ハンド完了時に通算成績へ一度だけ加算する（vsScored は永続化されリロードでも二重加算しない）。
+  // 全体に加えて、そのハンドのポジション（OOP/IP）別にも積み上げる。
   useEffect(() => {
     if (!vsResult || vsScored) return
     setVsScored(true)
     setVsStats((s) => {
+      const win = vsResult.score > 0 ? 1 : 0
+      const bump = (p: VsPosStats): VsPosStats => ({
+        hands: p.hands + 1,
+        wins: p.wins + win,
+        total: p.total + vsResult.score,
+      })
       const next: VsStats = {
-        hands: s.hands + 1,
-        wins: s.wins + (vsResult.score > 0 ? 1 : 0),
-        total: s.total + vsResult.score,
+        ...bump(s),
+        oop: vsHeroIsIP ? s.oop : bump(s.oop),
+        ip: vsHeroIsIP ? bump(s.ip) : s.ip,
       }
       saveVsStats(next)
       return next
     })
-  }, [vsResult, vsScored])
+  }, [vsResult, vsScored, vsHeroIsIP])
 
   // ---- 描画 ----
   const streetLabel =
@@ -817,19 +826,11 @@ export default function App() {
           <button type="button" className="primary-btn" onClick={dealVs}>
             {t(lang, 'vsDeal')}
           </button>
+          <VsStatsView lang={lang} stats={vsStats} />
           {vsStats.hands > 0 && (
-            <div className="final-scores">
-              <span>
-                {t(lang, 'vsStatsLine', {
-                  hands: vsStats.hands,
-                  wr: Math.round((vsStats.wins / vsStats.hands) * 100),
-                  total: `${vsStats.total >= 0 ? '+' : ''}${vsStats.total}`,
-                })}
-              </span>
-              <button type="button" className="ghost-btn" onClick={resetVsStats}>
-                {t(lang, 'vsResetStats')}
-              </button>
-            </div>
+            <button type="button" className="ghost-btn vs-stats-reset" onClick={resetVsStats}>
+              {t(lang, 'vsResetStats')}
+            </button>
           )}
         </section>
       )}
@@ -990,15 +991,7 @@ export default function App() {
           <button type="button" className="primary-btn" onClick={dealVs}>
             {t(lang, 'vsNextHand')}
           </button>
-          {vsStats.hands > 0 && (
-            <p className="ev-hint">
-              {t(lang, 'vsStatsLine', {
-                hands: vsStats.hands,
-                wr: Math.round((vsStats.wins / vsStats.hands) * 100),
-                total: `${vsStats.total >= 0 ? '+' : ''}${vsStats.total}`,
-              })}
-            </p>
-          )}
+          <VsStatsView lang={lang} stats={vsStats} />
           <p className="ev-hint">{t(lang, 'vsRules')}</p>
         </section>
       )}
@@ -1354,6 +1347,36 @@ function SuggestionView({
           {t(lang, 'foulRisk')} {(suggestion.foulProb * 100).toFixed(0)}%
         </span>
       </div>
+    </div>
+  )
+}
+
+function vsStatsText(lang: Lang, s: VsPosStats): string {
+  return t(lang, 'vsStatsBody', {
+    hands: s.hands,
+    wr: s.hands > 0 ? Math.round((s.wins / s.hands) * 100) : 0,
+    total: `${s.total >= 0 ? '+' : ''}${s.total}`,
+  })
+}
+
+/** 対戦モードの通算成績（全体 + ポジション別の内訳）。 */
+function VsStatsView({ lang, stats }: { lang: Lang; stats: VsStats }) {
+  if (stats.hands === 0) return null
+  return (
+    <div className="vs-stats">
+      <span>
+        <strong>{t(lang, 'vsStatsTotalLabel')}</strong> {vsStatsText(lang, stats)}
+      </span>
+      {stats.oop.hands > 0 && (
+        <span>
+          {t(lang, 'vsPosOOP')} {vsStatsText(lang, stats.oop)}
+        </span>
+      )}
+      {stats.ip.hands > 0 && (
+        <span>
+          {t(lang, 'vsPosIP')} {vsStatsText(lang, stats.ip)}
+        </span>
+      )}
     </div>
   )
 }

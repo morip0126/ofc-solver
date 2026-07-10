@@ -61,12 +61,25 @@ export interface PersistedGame {
   vs: VsState | null
 }
 
-/** 対戦モードの通算成績。 */
-export interface VsStats {
+export interface VsPosStats {
   hands: number
   wins: number
   total: number
 }
+
+/** 対戦モードの通算成績（全体 + ポジション別）。 */
+export interface VsStats extends VsPosStats {
+  oop: VsPosStats
+  ip: VsPosStats
+}
+
+const zeroPosStats = (): VsPosStats => ({ hands: 0, wins: 0, total: 0 })
+
+export const emptyVsStats = (): VsStats => ({
+  ...zeroPosStats(),
+  oop: zeroPosStats(),
+  ip: zeroPosStats(),
+})
 
 const SETTINGS_KEY = 'ofc-solver:settings:v1'
 const GAME_KEY = 'ofc-solver:game:v1'
@@ -301,12 +314,19 @@ export function loadGame(useJokers: boolean): PersistedGame | null {
 
 const VS_STATS_KEY = 'ofc-solver:vsStats:v1'
 
+function parsePosStats(v: unknown): VsPosStats {
+  if (typeof v !== 'object' || v === null) return zeroPosStats()
+  const o = v as Record<string, unknown>
+  const num = (x: unknown) => (typeof x === 'number' && Number.isFinite(x) ? x : 0)
+  return { hands: num(o.hands), wins: num(o.wins), total: num(o.total) }
+}
+
+/** 旧形式（ポジション別なし）は全体成績のみ引き継ぎ、内訳はゼロから積み上げる。 */
 export function loadVsStats(): VsStats {
   const raw = readJSON(VS_STATS_KEY)
-  if (typeof raw !== 'object' || raw === null) return { hands: 0, wins: 0, total: 0 }
+  if (typeof raw !== 'object' || raw === null) return emptyVsStats()
   const o = raw as Record<string, unknown>
-  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
-  return { hands: num(o.hands), wins: num(o.wins), total: num(o.total) }
+  return { ...parsePosStats(raw), oop: parsePosStats(o.oop), ip: parsePosStats(o.ip) }
 }
 
 export function saveVsStats(stats: VsStats): void {

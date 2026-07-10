@@ -568,6 +568,20 @@ button {
   border-color: var(--accent);
 }
 
+/* 対戦モードの通算成績（全体 + OOP/IP 内訳） */
+.vs-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 10px;
+}
+
+.vs-stats-reset {
+  margin-top: 8px;
+}
+
 .final-scores {
   display: flex;
   gap: 14px;

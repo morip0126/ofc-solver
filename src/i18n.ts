@@ -56,9 +56,10 @@ const messages = {
   vsResultTie: { ja: '引き分け', en: 'Tie' },
   vsScore: { ja: 'このハンド', en: 'This hand' },
   vsYou: { ja: 'あなた', en: 'You' },
-  vsStatsLine: {
-    ja: '通算 {hands}ハンド / 勝率 {wr}% / 収支 {total}点',
-    en: 'Session: {hands} hands / win {wr}% / total {total} pts',
+  vsStatsTotalLabel: { ja: '通算', en: 'Session' },
+  vsStatsBody: {
+    ja: '{hands}ハンド / 勝率 {wr}% / 収支 {total}点',
+    en: '{hands} hands / win {wr}% / total {total} pts',
   },
   vsResetStats: { ja: '通算成績をリセット', en: 'Reset stats' },
   vsRules: {
