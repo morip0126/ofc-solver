@@ -421,6 +421,25 @@ export default function App() {
     [assign, selectedPoolId, hero],
   )
 
+  // 段ごとの未確定割当（プールで割当済みのカード）。段のプレビュー表示に使う。
+  const pendingByRow = useMemo(() => {
+    const out: Record<RowKey, Card[]> = { top: [], middle: [], bottom: [] }
+    if (mode !== 'fl') {
+      for (const c of pool) {
+        const row = assign[cardId(c)]
+        if (row) out[row].push(c)
+      }
+    }
+    return out
+  }, [mode, pool, assign])
+
+  // 段に表示中の未確定カードをタップ: 割当を解除してプールへ戻す。
+  const onPendingTap = useCallback((card: Card) => {
+    const id = cardId(card)
+    setAssign((a) => removeKey(a, id))
+    setSelectedPoolId((s) => (s === id ? null : s))
+  }, [])
+
   // Hero の段をタップ: カード選択中ならそこへ置く。未選択ならピッカーの入力先切替（プレイ/FL）。
   const onHeroRowTap = useCallback(
     (row: RowKey) => {
@@ -921,8 +940,10 @@ export default function App() {
               active={mode !== 'vs' && target.kind === 'hero' && target.row === row}
               selectable={mode !== 'vs' || selectedActive}
               droppable={selectedActive && rowHasSpace(row)}
+              pending={pendingByRow[row]}
               onSelect={() => onHeroRowTap(row)}
               onRemove={(c) => onPickerToggle(c)}
+              onPendingTap={onPendingTap}
             />
           ))}
           {heroDiscards.length > 0 && (
@@ -983,7 +1004,7 @@ export default function App() {
                 <div className="pool-card" key={id}>
                   <button
                     type="button"
-                    className={`pool-card-btn ${selectedPoolId === id ? 'sel' : ''}`}
+                    className={`pool-card-btn ${selectedPoolId === id ? 'sel' : ''} ${dest ? 'assigned' : ''}`}
                     onClick={(e) => {
                       e.stopPropagation()
                       onPoolCardTap(c)
@@ -1259,10 +1280,11 @@ function removeKey(a: Record<number, RowKey>, id: number): Record<number, RowKey
   return na
 }
 
-function rowHandText(lang: Lang, row: RowKey, cards: Card[]): string {
+function rowHandText(lang: Lang, row: RowKey, cards: Card[], pending: Card[] = []): string {
   const full = row === 'top' ? 3 : 5
-  if (cards.length !== full) return `${cards.length}/${full}`
-  return handLabel(row === 'top' ? evaluate3(cards) : evaluate5(cards), lang)
+  const combined = [...cards, ...pending]
+  if (combined.length !== full) return `${combined.length}/${full}`
+  return handLabel(row === 'top' ? evaluate3(combined) : evaluate5(combined), lang)
 }
 
 function BoardRow({
@@ -1275,6 +1297,8 @@ function BoardRow({
   compact,
   selectable = true,
   droppable = false,
+  pending,
+  onPendingTap,
 }: {
   lang: Lang
   row: RowKey
@@ -1287,6 +1311,9 @@ function BoardRow({
   selectable?: boolean
   /** 選択中のプールカードを置ける段（ハイライト表示）。 */
   droppable?: boolean
+  /** 未確定の割当カード（確定前のプレビュー表示）。タップで割当を解除する。 */
+  pending?: Card[]
+  onPendingTap?: (card: Card) => void
 }) {
   const clickable = selectable || droppable
   return (
@@ -1301,7 +1328,7 @@ function BoardRow({
         onClick={clickable ? onSelect : undefined}
       >
         <span className="row-label">{t(lang, row as MessageKey)}</span>
-        <span className="row-hand">{rowHandText(lang, row, cards)}</span>
+        <span className="row-hand">{rowHandText(lang, row, cards, pending)}</span>
       </button>
       <div className="row-cards">
         {cards.map((c) => (
@@ -1312,6 +1339,20 @@ function BoardRow({
             onClick={(e) => {
               e.stopPropagation()
               onRemove(c)
+            }}
+          >
+            <CardGlyph card={c} size={compact ? 'sm' : 'md'} />
+          </button>
+        ))}
+        {/* 未確定の割当プレビュー（点線 + 半透明）。タップで割当解除。 */}
+        {pending?.map((c) => (
+          <button
+            type="button"
+            key={cardId(c)}
+            className="row-card-btn pending"
+            onClick={(e) => {
+              e.stopPropagation()
+              onPendingTap?.(c)
             }}
           >
             <CardGlyph card={c} size={compact ? 'sm' : 'md'} />
