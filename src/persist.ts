@@ -47,6 +47,8 @@ export interface VsState {
   villainDiscards: Card[]
   /** このハンドを通算成績に加算済みか（リロード時の二重加算防止）。 */
   scored: boolean
+  /** Hero が IP（後手 = 相手の配置を見てから置ける）か。ハンドごとに交代する。 */
+  heroIsIP: boolean
 }
 
 export interface PersistedGame {
@@ -170,6 +172,7 @@ export function saveGame(game: PersistedGame): void {
           villainHand: game.vs.villainHand ? game.vs.villainHand.map(cardToString) : null,
           villainDiscards: game.vs.villainDiscards.map(cardToString),
           scored: game.vs.scored,
+          heroIsIP: game.vs.heroIsIP,
         }
       : null,
   })
@@ -266,6 +269,7 @@ export function loadGame(useJokers: boolean): PersistedGame | null {
         villainHand: vsRaw.villainHand == null ? null : parseCodes(vsRaw.villainHand, useJokers),
         villainDiscards: parseCodes(vsRaw.villainDiscards ?? [], useJokers),
         scored: vsRaw.scored === true,
+        heroIsIP: vsRaw.heroIsIP === true,
       }
     }
     assertNoDuplicates([

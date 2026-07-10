@@ -95,6 +95,11 @@ const PRECISION_ITERS: Record<Precision, { initial: number; street: number; ev: 
   high: { initial: 400, street: 500, ev: 1200 },
 }
 
+/** 対戦モードの完了ラウンド数（0 = 未配置, 1 = 初手済, 2..5 = 各ストリート済）。 */
+function roundOf(count: number): number {
+  return count <= 0 ? 0 : count <= 5 ? 1 : Math.min(5, 1 + Math.floor((count - 5) / 2))
+}
+
 // ---- 本体 ---------------------------------------------------------------------
 
 export default function App() {
@@ -143,6 +148,7 @@ export default function App() {
     boot.game?.vs?.villainDiscards ?? [],
   )
   const [vsScored, setVsScored] = useState(boot.game?.vs?.scored ?? false)
+  const [vsHeroIsIP, setVsHeroIsIP] = useState(boot.game?.vs?.heroIsIP ?? false)
   const [vsBusy, setVsBusy] = useState(false)
   const [vsError, setVsError] = useState<string | null>(null)
   const [vsStats, setVsStats] = useState<VsStats>(() => loadVsStats())
@@ -170,10 +176,14 @@ export default function App() {
   )
   const heroCount = boardCount(hero)
   const expectedDraw = mode === 'fl' ? FL_MAX : heroCount === 0 ? 5 : heroCount >= 13 ? 0 : 3
-  // 対戦モードでハンドが進行中か（配牌済み・盤面のいずれかにカードがある）。
+  // 対戦モードでハンドが進行中か（山札・配牌・盤面のいずれかにカードがある）。
   const vsHandActive =
     mode === 'vs' &&
-    (pool.length > 0 || heroCount > 0 || vsVillainHand !== null || boardCount(villains[0]) > 0)
+    (vsDeck.length > 0 ||
+      pool.length > 0 ||
+      heroCount > 0 ||
+      vsVillainHand !== null ||
+      boardCount(villains[0]) > 0)
 
   const dead = useMemo(
     () => [...shownVillains.flatMap(boardCards), ...heroDiscards],
@@ -219,9 +229,15 @@ export default function App() {
       pool,
       assign,
       history,
-      vs: { deck: vsDeck, villainHand: vsVillainHand, villainDiscards: vsVillainDiscards, scored: vsScored },
+      vs: {
+        deck: vsDeck,
+        villainHand: vsVillainHand,
+        villainDiscards: vsVillainDiscards,
+        scored: vsScored,
+        heroIsIP: vsHeroIsIP,
+      },
     })
-  }, [hero, heroDiscards, villains, pool, assign, history, vsDeck, vsVillainHand, vsVillainDiscards, vsScored])
+  }, [hero, heroDiscards, villains, pool, assign, history, vsDeck, vsVillainHand, vsVillainDiscards, vsScored, vsHeroIsIP])
 
   // ---- 入力操作 ----
   const setPlayers = useCallback((n: 2 | 3) => {
@@ -386,8 +402,14 @@ export default function App() {
     if (mode === 'fl' || pool.length === 0 || pool.length !== expectedDraw) {
       return { valid: false }
     }
-    // 対戦モードではソルバーの思考完了を待ってから次のストリートへ進む。
-    if (mode === 'vs' && vsBusy) return { valid: false }
+    // 対戦モード: ポジションに従って手番を守る。
+    // OOP の Hero は相手が同ラウンドに追いつくまで、IP の Hero は相手が次を置くまで待つ。
+    if (mode === 'vs') {
+      if (vsBusy || vsVillainHand) return { valid: false }
+      const hr = roundOf(heroCount)
+      const vr = roundOf(boardCount(villains[0]))
+      if (vsHeroIsIP ? vr !== hr + 1 : vr !== hr) return { valid: false }
+    }
     const rowAdd: Record<RowKey, number> = { top: 0, middle: 0, bottom: 0 }
     let assigned = 0
     for (const c of pool) {
@@ -401,7 +423,7 @@ export default function App() {
     }
     const need = heroCount === 0 ? pool.length : pool.length - 1
     return { valid: assigned === need }
-  }, [mode, vsBusy, pool, expectedDraw, assign, hero, heroCount])
+  }, [mode, vsBusy, vsVillainHand, vsHeroIsIP, villains, pool, expectedDraw, assign, hero, heroCount])
 
   const commit = useCallback(() => {
     if (!commitState.valid) return
@@ -419,22 +441,7 @@ export default function App() {
     setAssign({})
     setSugg(null)
     setEv(null)
-
-    // 対戦モード: 確定に合わせて山札から次のラウンドを配る。
-    // ソルバーは Hero の確定を見てから自分のラウンドを打つ（思考は villain 効果で非同期）。
-    if (mode === 'vs') {
-      let deck = vsDeck
-      if (boardCount(villains[0]) < 13) {
-        setVsVillainHand(deck.slice(0, 3))
-        deck = deck.slice(3)
-      }
-      if (boardCount(nb) < 13) {
-        setPool(deck.slice(0, 3))
-        deck = deck.slice(3)
-      }
-      setVsDeck(deck)
-    }
-  }, [commitState.valid, pushHistory, hero, heroDiscards, pool, assign, mode, vsDeck, villains])
+  }, [commitState.valid, pushHistory, hero, heroDiscards, pool, assign])
 
   const applySuggestion = useCallback(
     (s: SuggestionDTO) => {
@@ -553,23 +560,49 @@ export default function App() {
 
   // ---- 対戦モード（vs ソルバー）----
 
-  // 新しいハンドを配る。Hero へ5枚（ドローとして）、ソルバーへ5枚（手札として）。
+  // 新しいハンドを配る。ポジション（先手/後手）はハンドごとに交代し、
+  // 実際の配札はポジションに従って進行ドライバが行う。
   const dealVs = useCallback(() => {
     const deck = shuffle(makeDeck(useJokers))
     setHero(emptyBoard())
     setHeroDiscards([])
     setVillains([emptyBoard(), emptyBoard()])
+    setPool([])
     setAssign({})
     setHistory([])
     setEv(null)
     setVsError(null)
     setVsScored(false)
+    setVsVillainHand(null)
     setVsVillainDiscards([])
-    setPool(deck.slice(0, 5))
-    setVsVillainHand(deck.slice(5, 10))
-    setVsDeck(deck.slice(10))
+    setVsHeroIsIP((p) => !p)
+    setVsDeck(deck)
     setTarget({ kind: 'pool' })
   }, [useJokers])
+
+  // 対戦モードの進行ドライバ。ポジションに従って山札から手札を配る。
+  // 先手（OOP）が各ラウンドを先に置き、後手（IP）は相手の同ラウンド完了を見てから置く。
+  // Hero の手札は自分の前ラウンド確定後すぐ配る（相手の思考中に検討できる）が、
+  // 確定は commitState の手番ゲートが守る。
+  useEffect(() => {
+    if (mode !== 'vs' || vsDeck.length === 0) return
+    if (vsVillainHand) return // ソルバーの配置待ち
+    const hr = roundOf(heroCount)
+    const vr = roundOf(boardCount(villains[0]))
+    if (pool.length === 0 && hr < 5) {
+      const n = hr === 0 ? 5 : 3
+      setPool(vsDeck.slice(0, n))
+      setVsDeck(vsDeck.slice(n))
+      return
+    }
+    // ソルバーの手番: Hero が IP なら先行（vr === hr）、Hero が OOP なら追走（hr === vr + 1）。
+    if (vr < 5 && (vsHeroIsIP ? vr === hr : hr === vr + 1)) {
+      const n = vr === 0 ? 5 : 3
+      setVsVillainHand(vsDeck.slice(0, n))
+      setVsDeck(vsDeck.slice(n))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, vsDeck, vsVillainHand, heroCount, villains, pool.length, vsHeroIsIP])
 
   // ソルバーの思考: 手札（vsVillainHand）があれば推奨エンジンで配置を決める。
   // ソルバーが知れるのは自分の盤面・手札・捨て札と、Hero の公開盤面のみ（Hero の捨て札は見ない）。
@@ -805,6 +838,11 @@ export default function App() {
         <section className="panel hero-panel">
           <div className="panel-head">
             <span className="panel-title">{t(lang, 'hero')}</span>
+            {mode === 'vs' && (
+              <span className={`pos-badge ${vsHeroIsIP ? 'ip' : ''}`}>
+                {t(lang, vsHeroIsIP ? 'vsPosIP' : 'vsPosOOP')}
+              </span>
+            )}
             <span className="street-label">{streetLabel}</span>
             {heroFinal && (
               <span className={`final-chips ${heroFinal.evaluated.fouled ? 'foul' : ''}`}>
@@ -908,7 +946,9 @@ export default function App() {
             })}
           </div>
           <button type="button" className="primary-btn" disabled={!commitState.valid} onClick={commit}>
-            {mode === 'vs' && vsBusy ? t(lang, 'vsThinking') : t(lang, 'commit')}
+            {mode === 'vs' && (vsBusy || vsVillainHand)
+              ? t(lang, 'vsWaitingVillain')
+              : t(lang, 'commit')}
           </button>
         </section>
       )}
@@ -922,6 +962,9 @@ export default function App() {
                 : vsResult.score < 0
                   ? t(lang, 'vsResultLose')
                   : t(lang, 'vsResultTie')}
+            </span>
+            <span className={`pos-badge ${vsHeroIsIP ? 'ip' : ''}`}>
+              {t(lang, vsHeroIsIP ? 'vsPosIP' : 'vsPosOOP')}
             </span>
             <span className="street-label">
               {t(lang, 'vsScore')} <SignedNumber value={vsResult.score} />

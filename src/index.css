@@ -553,6 +553,21 @@ button {
   color: var(--muted);
 }
 
+/* 対戦モードのポジション表示（OOP=先手 / IP=後手） */
+.pos-badge {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+
+.pos-badge.ip {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
 .final-scores {
   display: flex;
   gap: 14px;

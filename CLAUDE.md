@@ -42,7 +42,8 @@
   Chan の公式で統合）。**候補ごとに独立シードの PRNG を使うため分割不変**。この性質は
   `solverParallel.test.ts` で担保しているので、チャンク API を触ったら必ず維持・更新する。
 - UI は実戦アシスタント（`App.tsx`）: プレイモード（初手→ストリート進行 + 推奨手）、
-  対戦モード（vs ソルバー。山札進行・ソルバー手番は `App.tsx` の vs 系 state、ソルバーの情報は
+  対戦モード（vs ソルバー。ポジション制: OOP が先置き・IP は後追い、ハンドごとに交代。
+  山札進行は `App.tsx` の進行ドライバ effect と `roundOf` の手番ゲート。ソルバーの情報は
   自身の手札/捨て札 + Hero の公開盤面のみに制限）、FL モード。
   Worker プロトコルは `solver.worker.ts`（evalInitialChunk / evalStreetChunk / solveFL / ev ほか）。
   設定・盤面は `persist.ts` が localStorage に自動保存（スキーマ変更時はキーの版数を上げる）。
