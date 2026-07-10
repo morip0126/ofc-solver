@@ -86,20 +86,20 @@ const messages = {
   handComplete: { ja: '完成', en: 'Complete' },
   drawPrompt: { ja: 'ドローをあと{n}枚選んでください', en: 'Pick {n} more drawn card(s)' },
   assignHintInitial: {
-    ja: 'カードをタップするたびに置き先が トップ→ミドル→ボトム→未定 と切替わります（推奨手の採用も可）',
-    en: 'Tap a card to cycle its destination: Top → Middle → Bottom → unset (or apply a suggestion)',
+    ja: 'カードをタップして選択し、置きたい段をタップ（推奨手の採用も可）',
+    en: 'Tap a card to select it, then tap a row to place it (or apply a suggestion)',
   },
   assignHintStreet: {
-    ja: 'タップで置き先を切替え。2枚を割当てると残り1枚が自動で捨て札になります（推奨手の採用も可）',
-    en: 'Tap cards to cycle destinations; assign 2 and the last is discarded automatically (or apply a suggestion)',
+    ja: 'カードを選択して段をタップ。2枚を割当てると残り1枚が自動で捨て札になります（推奨手の採用も可）',
+    en: 'Select a card and tap a row; assign 2 and the last is discarded automatically (or apply a suggestion)',
   },
   vsAssignHintInitial: {
-    ja: 'カードをタップするたびに置き先が トップ→ミドル→ボトム→未定 と切替わります',
-    en: 'Tap a card to cycle its destination: Top → Middle → Bottom → unset',
+    ja: 'カードをタップして選択し、置きたい段をタップ',
+    en: 'Tap a card to select it, then tap a row to place it',
   },
   vsAssignHintStreet: {
-    ja: 'タップで置き先を切替え。2枚を割当てると残り1枚が自動で捨て札になります',
-    en: 'Tap cards to cycle destinations; assign 2 and the last is discarded automatically',
+    ja: 'カードを選択して段をタップ。2枚を割当てると残り1枚が自動で捨て札になります',
+    en: 'Select a card and tap a row; assign 2 and the last is discarded automatically',
   },
   boardShapeWarning: {
     ja: '盤面の形が通常の進行と合わないため推奨は出せません（枚数を確認してください）',
