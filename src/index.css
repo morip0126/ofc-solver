@@ -322,6 +322,12 @@ button {
   min-height: 62px;
 }
 
+/* FL 配牌（13〜17枚）は列数指定なしで並べるため折返しレイアウトにする */
+.pool-cards.wrap {
+  display: flex;
+  flex-wrap: wrap;
+}
+
 .pool-card {
   display: flex;
   flex-direction: column;
@@ -538,6 +544,13 @@ button {
   font-size: 11px;
   color: var(--muted);
   margin: 6px 0 0;
+}
+
+/* EV の 95% 信頼区間（±）表示 */
+.ev-ci {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted);
 }
 
 .final-scores {

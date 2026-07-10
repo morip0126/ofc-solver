@@ -21,12 +21,25 @@ import { CardGlyph } from './ui/CardGlyph'
 import { CardPicker } from './ui/CardPicker'
 import { handLabel } from './ui/handLabel'
 import { evaluate3, evaluate5 } from './domain'
-import type {
-  FLResultDTO,
-  SuggestionDTO,
-  WorkerRequest,
-  WorkerResponse,
-} from './worker/solver.worker'
+import type { FLResultDTO, SuggestionDTO } from './worker/solver.worker'
+import {
+  CanceledError,
+  type EvResult,
+  type PoolTask,
+  estimateEvParallel,
+  solveFLParallel,
+  solverPool,
+  suggestInitialParallel,
+  suggestStreetParallel,
+} from './worker/solverClient'
+import {
+  type Precision,
+  detectLang,
+  loadGame,
+  loadSettings,
+  saveGame,
+  saveSettings,
+} from './persist'
 
 // ---- 型・ヘルパー -------------------------------------------------------------
 
@@ -70,26 +83,38 @@ interface Snapshot {
   assign: Record<number, RowKey>
 }
 
-function newWorker(): Worker {
-  return new Worker(new URL('./worker/solver.worker.ts', import.meta.url), { type: 'module' })
+/** 精度設定ごとのモンテカルロ反復数。Worker プールで並列実行される前提の値。 */
+const PRECISION_ITERS: Record<Precision, { initial: number; street: number; ev: number }> = {
+  fast: { initial: 60, street: 80, ev: 150 },
+  standard: { initial: 160, street: 200, ev: 400 },
+  high: { initial: 400, street: 500, ev: 1200 },
 }
 
 // ---- 本体 ---------------------------------------------------------------------
 
 export default function App() {
-  const [lang, setLang] = useState<Lang>('ja')
-  const [variantId, setVariantId] = useState<VariantId>('normal')
-  const [players, setPlayersState] = useState<2 | 3>(2)
-  const [mode, setModeState] = useState<Mode>('play')
-  const [useJokers, setUseJokersState] = useState(false)
+  // 初回マウント時に localStorage から設定と進行中の盤面を復元する。
+  const [boot] = useState(() => {
+    const settings = loadSettings()
+    return { settings, game: loadGame(settings.useJokers ?? false) }
+  })
 
-  const [hero, setHero] = useState<PB>(emptyBoard)
-  const [heroDiscards, setHeroDiscards] = useState<Card[]>([])
-  const [villains, setVillains] = useState<[PB, PB]>([emptyBoard(), emptyBoard()])
-  const [pool, setPool] = useState<Card[]>([])
-  const [assign, setAssign] = useState<Record<number, RowKey>>({})
+  const [lang, setLang] = useState<Lang>(boot.settings.lang ?? detectLang())
+  const [variantId, setVariantId] = useState<VariantId>(boot.settings.variantId ?? 'normal')
+  const [players, setPlayersState] = useState<2 | 3>(boot.settings.players ?? 2)
+  const [mode, setModeState] = useState<Mode>(boot.settings.mode ?? 'play')
+  const [useJokers, setUseJokersState] = useState(boot.settings.useJokers ?? false)
+  const [precision, setPrecision] = useState<Precision>(boot.settings.precision ?? 'standard')
+
+  const [hero, setHero] = useState<PB>(boot.game?.hero ?? emptyBoard)
+  const [heroDiscards, setHeroDiscards] = useState<Card[]>(boot.game?.heroDiscards ?? [])
+  const [villains, setVillains] = useState<[PB, PB]>(
+    boot.game?.villains ?? [emptyBoard(), emptyBoard()],
+  )
+  const [pool, setPool] = useState<Card[]>(boot.game?.pool ?? [])
+  const [assign, setAssign] = useState<Record<number, RowKey>>(boot.game?.assign ?? {})
   const [target, setTarget] = useState<Target>({ kind: 'pool' })
-  const [history, setHistory] = useState<Snapshot[]>([])
+  const [history, setHistory] = useState<Snapshot[]>(boot.game?.history ?? [])
 
   const [sugg, setSugg] = useState<SuggestionDTO[] | null>(null)
   const [suggBusy, setSuggBusy] = useState(false)
@@ -100,19 +125,21 @@ export default function App() {
   const [flBusy, setFlBusy] = useState(false)
   const [flError, setFlError] = useState<string | null>(null)
 
-  const [ev, setEv] = useState<number | null>(null)
+  const [ev, setEv] = useState<EvResult | null>(null)
   const [evBusy, setEvBusy] = useState(false)
+  const [flProgress, setFlProgress] = useState(0)
 
-  const suggWorker = useRef<Worker | null>(null)
-  const flWorker = useRef<Worker | null>(null)
-  const evWorker = useRef<Worker | null>(null)
-  const reqId = useRef(0)
+  const suggTask = useRef<PoolTask<SuggestionDTO[]> | null>(null)
+  const flTask = useRef<PoolTask<FLResultDTO[]> | null>(null)
+  const evTask = useRef<PoolTask<EvResult> | null>(null)
 
   useEffect(() => {
+    // Worker プールを先に温めて初回推奨の体感を短くする。
+    solverPool.warmup()
     return () => {
-      suggWorker.current?.terminate()
-      flWorker.current?.terminate()
-      evWorker.current?.terminate()
+      suggTask.current?.cancel()
+      flTask.current?.cancel()
+      evTask.current?.cancel()
     }
   }, [])
 
@@ -155,6 +182,15 @@ export default function App() {
   const poolCodes = useMemo(() => codesOf(pool), [pool])
   const deadCodes = useMemo(() => codesOf(dead), [dead])
 
+  // ---- 永続化（設定・進行中の盤面）----
+  useEffect(() => {
+    saveSettings({ lang, variantId, players, mode, useJokers, precision })
+  }, [lang, variantId, players, mode, useJokers, precision])
+
+  useEffect(() => {
+    saveGame({ hero, heroDiscards, villains, pool, assign, history })
+  }, [hero, heroDiscards, villains, pool, assign, history])
+
   // ---- 入力操作 ----
   const setPlayers = useCallback((n: 2 | 3) => {
     setPlayersState(n)
@@ -173,7 +209,7 @@ export default function App() {
     setTarget({ kind: 'pool' })
   }, [])
 
-  const resetAll = useCallback(() => {
+  const clearAll = useCallback(() => {
     setHero(emptyBoard())
     setHeroDiscards([])
     setVillains([emptyBoard(), emptyBoard()])
@@ -186,13 +222,21 @@ export default function App() {
     setTarget({ kind: 'pool' })
   }, [])
 
+  // リセットは破壊的なので、カードが置かれているときは確認してから。
+  const resetAll = useCallback(() => {
+    if (usedIds.size > 0 && !window.confirm(t(lang, 'confirmReset'))) return
+    clearAll()
+  }, [usedIds, lang, clearAll])
+
   // デッキ切替（ジョーカー有無）は盤面のカードと整合しなくなるため全リセットする。
   const setUseJokers = useCallback(
     (on: boolean) => {
+      if (on === useJokers) return
+      if (usedIds.size > 0 && !window.confirm(t(lang, 'confirmDeckSwitch'))) return
       setUseJokersState(on)
-      resetAll()
+      clearAll()
     },
-    [resetAll],
+    [useJokers, usedIds, lang, clearAll],
   )
 
   const pushHistory = useCallback(() => {
@@ -342,8 +386,8 @@ export default function App() {
 
   // ---- 推奨手の自動計算 ----
   useEffect(() => {
-    suggWorker.current?.terminate()
-    suggWorker.current = null
+    suggTask.current?.cancel()
+    suggTask.current = null
     setSugg(null)
     setSuggBusy(false)
     setSuggError(null)
@@ -355,108 +399,91 @@ export default function App() {
     const openSlots = 13 - heroCount
     if (heroCount > 0 && openSlots < 2) return
 
-    const id = ++reqId.current
-    const worker = newWorker()
-    suggWorker.current = worker
     setSuggBusy(true)
-
-    worker.onmessage = (e: MessageEvent<WorkerResponse>) => {
-      const msg = e.data
-      if (msg.id !== reqId.current) return
-      if (msg.kind === 'progress') {
-        setSuggProgress(msg.total > 0 ? msg.done / msg.total : 0)
-        return
-      }
-      setSuggBusy(false)
-      if (msg.kind === 'suggestions') setSugg(msg.suggestions)
-      else if (msg.kind === 'error') setSuggError(msg.message)
-    }
-
-    const req: WorkerRequest =
+    const iters = PRECISION_ITERS[precision]
+    const task =
       heroCount === 0
-        ? {
-            id,
-            kind: 'suggestInitial',
-            cards: pool.map(cardToString),
-            dead: dead.map(cardToString),
-            variantId,
-            jokers: useJokers,
-          }
-        : {
-            id,
-            kind: 'suggestStreet',
-            board: { top: hero.top.map(cardToString), middle: hero.middle.map(cardToString), bottom: hero.bottom.map(cardToString) },
-            drawn: pool.map(cardToString),
-            dead: dead.map(cardToString),
-            variantId,
-            jokers: useJokers,
-          }
-    worker.postMessage(req)
+        ? suggestInitialParallel(
+            { cards: pool, dead, variantId, jokers: useJokers, iters: iters.initial },
+            setSuggProgress,
+          )
+        : suggestStreetParallel(
+            { board: hero, drawn: pool, dead, variantId, jokers: useJokers, iters: iters.street },
+            setSuggProgress,
+          )
+    suggTask.current = task
+    task.promise
+      .then((suggestions) => {
+        if (suggTask.current !== task) return
+        setSugg(suggestions)
+        setSuggBusy(false)
+      })
+      .catch((err) => {
+        if (suggTask.current !== task) return
+        setSuggBusy(false)
+        if (!(err instanceof CanceledError)) {
+          setSuggError(err instanceof Error ? err.message : String(err))
+        }
+      })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, heroCodes, poolCodes, deadCodes, variantId, useJokers])
+  }, [mode, heroCodes, poolCodes, deadCodes, variantId, useJokers, precision])
 
   // 盤面・設定が変わったら EV はリセット
   useEffect(() => {
     setEv(null)
-    evWorker.current?.terminate()
-    evWorker.current = null
+    evTask.current?.cancel()
+    evTask.current = null
     setEvBusy(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [heroCodes, deadCodes, variantId, players, mode, useJokers])
+  }, [heroCodes, deadCodes, variantId, players, mode, useJokers, precision])
 
   const estimateEv = useCallback(() => {
-    evWorker.current?.terminate()
-    const worker = newWorker()
-    evWorker.current = worker
+    evTask.current?.cancel()
     setEvBusy(true)
     setEv(null)
-    const id = ++reqId.current
-    worker.onmessage = (e: MessageEvent<WorkerResponse>) => {
-      const msg = e.data
-      if (msg.id !== id) return
-      if (msg.kind === 'ev') setEv(msg.ev)
-      setEvBusy(false)
-      worker.terminate()
-      if (evWorker.current === worker) evWorker.current = null
-    }
-    const req: WorkerRequest = {
-      id,
-      kind: 'ev',
-      board: { top: hero.top.map(cardToString), middle: hero.middle.map(cardToString), bottom: hero.bottom.map(cardToString) },
-      dead: dead.map(cardToString),
+    const task = estimateEvParallel({
+      board: hero,
+      dead,
       variantId,
-      iters: 200,
-      opponents: players - 1,
       jokers: useJokers,
-    }
-    worker.postMessage(req)
-  }, [hero, dead, variantId, players, useJokers])
+      opponents: players - 1,
+      iters: PRECISION_ITERS[precision].ev,
+    })
+    evTask.current = task
+    task.promise
+      .then((res) => {
+        if (evTask.current !== task) return
+        setEv(res)
+        setEvBusy(false)
+      })
+      .catch((err) => {
+        if (evTask.current !== task) return
+        setEvBusy(false)
+        if (!(err instanceof CanceledError)) setEv(null)
+      })
+  }, [hero, dead, variantId, players, useJokers, precision])
 
   const solveFL = useCallback(() => {
-    flWorker.current?.terminate()
-    const worker = newWorker()
-    flWorker.current = worker
+    flTask.current?.cancel()
     setFlBusy(true)
     setFlResults(null)
     setFlError(null)
-    const id = ++reqId.current
-    worker.onmessage = (e: MessageEvent<WorkerResponse>) => {
-      const msg = e.data
-      if (msg.id !== id) return
-      setFlBusy(false)
-      if (msg.kind === 'fl') setFlResults(msg.results)
-      else if (msg.kind === 'error') setFlError(msg.message)
-      worker.terminate()
-      if (flWorker.current === worker) flWorker.current = null
-    }
-    const req: WorkerRequest = {
-      id,
-      kind: 'solveFL',
-      cards: pool.map(cardToString),
-      variantId,
-      jokers: useJokers,
-    }
-    worker.postMessage(req)
+    setFlProgress(0)
+    const task = solveFLParallel({ cards: pool, variantId, jokers: useJokers }, setFlProgress)
+    flTask.current = task
+    task.promise
+      .then((results) => {
+        if (flTask.current !== task) return
+        setFlResults(results)
+        setFlBusy(false)
+      })
+      .catch((err) => {
+        if (flTask.current !== task) return
+        setFlBusy(false)
+        if (!(err instanceof CanceledError)) {
+          setFlError(err instanceof Error ? err.message : String(err))
+        }
+      })
   }, [pool, variantId, useJokers])
 
   // ---- 完成時の評価 ----
@@ -527,6 +554,14 @@ export default function App() {
           <select value={players} onChange={(e) => setPlayers(Number(e.target.value) as 2 | 3)}>
             <option value={2}>{t(lang, 'playersHU')}</option>
             <option value={3}>{t(lang, 'players3')}</option>
+          </select>
+        </label>
+        <label className="ctrl-select">
+          {t(lang, 'precision')}
+          <select value={precision} onChange={(e) => setPrecision(e.target.value as Precision)}>
+            <option value="fast">{t(lang, 'precisionFast')}</option>
+            <option value="standard">{t(lang, 'precisionStandard')}</option>
+            <option value="high">{t(lang, 'precisionHigh')}</option>
           </select>
         </label>
         <div className="mode-toggle" role="group">
@@ -698,7 +733,10 @@ export default function App() {
               <dt>{t(lang, 'ev')}</dt>
               <dd>
                 {ev !== null ? (
-                  <SignedNumber value={ev} />
+                  <>
+                    <SignedNumber value={ev.mean} />
+                    {ev.ci95 > 0 && <span className="ev-ci"> ±{ev.ci95.toFixed(1)}</span>}
+                  </>
                 ) : evBusy ? (
                   t(lang, 'estimatingEv')
                 ) : (
@@ -739,7 +777,7 @@ export default function App() {
           </div>
           <p className="hint">{t(lang, 'flPoolPrompt')}</p>
           {pool.length > 0 && (
-            <div className="pool-cards">
+            <div className="pool-cards wrap">
               {pool.map((c) => (
                 <button
                   type="button"
@@ -760,6 +798,17 @@ export default function App() {
           >
             {flBusy ? t(lang, 'flSolving') : t(lang, 'flSolve')}
           </button>
+          {flBusy && (
+            <div className="progress-line">
+              <span>{t(lang, 'computing', { pct: Math.round(flProgress * 100) })}</span>
+              <div className="progress-bar">
+                <div
+                  className="progress-fill"
+                  style={{ width: `${Math.round(flProgress * 100)}%` }}
+                />
+              </div>
+            </div>
+          )}
           {flError && <p className="hint error">{t(lang, 'errorPrefix', { msg: flError })}</p>}
         </section>
       )}

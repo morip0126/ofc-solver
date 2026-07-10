@@ -22,6 +22,18 @@ const messages = {
   modeFL: { ja: 'FL', en: 'FL' },
   reset: { ja: 'リセット', en: 'Reset' },
   undo: { ja: '戻す', en: 'Undo' },
+  precision: { ja: '精度', en: 'Precision' },
+  precisionFast: { ja: '速い', en: 'Fast' },
+  precisionStandard: { ja: '標準', en: 'Standard' },
+  precisionHigh: { ja: '高精度', en: 'High' },
+  confirmReset: {
+    ja: '盤面をすべてリセットします。よろしいですか？',
+    en: 'Reset the entire board?',
+  },
+  confirmDeckSwitch: {
+    ja: 'デッキを切り替えると盤面がリセットされます。よろしいですか？',
+    en: 'Switching decks resets the board. Continue?',
+  },
 
   hero: { ja: 'Hero', en: 'Hero' },
   villainN: { ja: 'Villain {n}', en: 'Villain {n}' },
