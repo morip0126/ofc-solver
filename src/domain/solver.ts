@@ -15,7 +15,7 @@
 // 正しさは solver.test.ts の参照実装（combinations + evaluateArrangement）とのクロスチェックで担保。
 
 import { type Card, remainingDeck, without } from './cards'
-import { combinations, shuffle } from './combinatorics'
+import { combinations, mulberry32, shuffle } from './combinatorics'
 import {
   key3,
   key5,
@@ -276,6 +276,12 @@ export interface FantasylandOptions {
   /** リステイ（FL 継続）に与えるボーナス点（目的関数に加算）。既定は V(14) の実測値。 */
   stayBonus?: number
   topK?: number
+  /**
+   * bottom 候補（5枚組の列挙 index、prepFives の順）の走査範囲 [start, end)。
+   * Worker 分割用。省略時は全域。範囲ごとの topK を目的値降順にマージすれば全域探索と一致する
+   * （solverParallel.test.ts で担保）。
+   */
+  bottomRange?: readonly [number, number]
 }
 
 export interface FantasylandResult extends ScoredArrangement {
@@ -299,7 +305,7 @@ export function solveFantasyland(
 ): FantasylandResult[] {
   const n = cards.length
   if (n < 13 || n > 17) throw new Error(`solveFantasyland expects 13..17 cards, got ${n}`)
-  const { stayBonus = DEFAULT_STAY_BONUS, topK = 3 } = options
+  const { stayBonus = DEFAULT_STAY_BONUS, topK = 3, bottomRange } = options
 
   const fives = prepFives(cards)
   const tops = prepTops(cards)
@@ -322,7 +328,9 @@ export function solveFantasyland(
   }[] = []
 
   const nf = fives.length
-  for (let bi = 0; bi < nf; bi++) {
+  const biStart = Math.max(0, bottomRange?.[0] ?? 0)
+  const biEnd = Math.min(nf, bottomRange?.[1] ?? nf)
+  for (let bi = biStart; bi < biEnd; bi++) {
     const b = fives[bi]
     const bottomStays = b.key >>> 20 >= HandCategory.Quads
     const royaltyList = bottomStays ? topsByRoyDesc : topsByObjDesc
@@ -392,17 +400,27 @@ function bestRoyaltyOpponent(cards: Card[], variant: Variant): EvaluatedArrangem
   return best ? best.evaluated : null
 }
 
+/** モンテカルロ EV の統計量。分散 = m2 / (n - 1)、標準誤差 = sqrt(m2 / (n - 1) / n)。 */
+export interface EVStats {
+  mean: number
+  /** 有効反復数。 */
+  n: number
+  /** 平均まわりの二乗和（Welford の M2）。チャンク統合時は Chan の公式で結合する。 */
+  m2: number
+}
+
 /**
  * 完成した配置の、ランダムな相手（1〜複数）に対する期待得点をモンテカルロ推定する。
  * 3人打ちはペアワイズ採点なので、Hero の期待得点は各相手との対戦得点の和。
  * dead には相手の見えているカードなど、デッキから除外すべき既知カードを渡す。
+ * 平均に加えて信頼区間・並列チャンク統合に使える統計量（n, M2）を返す。
  */
-export function estimateEVvsRandom(
+export function estimateEVvsRandomStats(
   arrangement: Arrangement,
   dead: readonly Card[],
   variant: Variant,
   options: EVOptions = {},
-): number {
+): EVStats {
   const {
     iters = 200,
     rng = Math.random,
@@ -417,7 +435,8 @@ export function estimateEVvsRandom(
     throw new Error(`not enough cards for ${opponents} random opponents (deck=${deck.length})`)
   }
 
-  let sum = 0
+  let mean = 0
+  let m2 = 0
   let n = 0
   for (let i = 0; i < iters; i++) {
     shuffle(deck, rng)
@@ -432,10 +451,22 @@ export function estimateEVvsRandom(
       total += scoreEvaluated(mine, opp, variant)
     }
     if (!ok) continue
-    sum += total
     n++
+    const d = total - mean
+    mean += d / n
+    m2 += d * (total - mean)
   }
-  return n > 0 ? sum / n : 0
+  return { mean, n, m2 }
+}
+
+/** estimateEVvsRandomStats の平均のみ版（従来 API）。 */
+export function estimateEVvsRandom(
+  arrangement: Arrangement,
+  dead: readonly Card[],
+  variant: Variant,
+  options: EVOptions = {},
+): number {
+  return estimateEVvsRandomStats(arrangement, dead, variant, options).mean
 }
 
 /** 候補配列を EV で評価して降順に並べ替える（solveBest13 の上位を再ランクする用途）。 */
@@ -776,6 +807,68 @@ export function suggestInitial5(
 
   // 精評価済みを上位に、残りは荒い評価のまま後ろへ。
   return [...refined, ...coarse.slice(refineTopK)]
+}
+
+// ---- 並列評価用のチャンク API --------------------------------------------------
+// Worker プールで候補集合を分割評価するための入口。候補は generateInitialBoards /
+// generateStreetBoards の列挙順 index で指定する。seed を与えると候補 index ごとに
+// 独立の決定論的 PRNG を使うため、どのようにチャンク分割しても全体の結果が一致する
+// （solverParallel.test.ts で担保）。
+
+export interface CandidateMetric extends BoardMetric {
+  /** generateInitialBoards / generateStreetBoards の列挙順 index。 */
+  index: number
+}
+
+export interface ChunkOptions extends RankOptions {
+  /** 候補ごとの決定論的 PRNG のベースシード。省略時は rng（または Math.random）を共有。 */
+  seed?: number
+  onProgress?: (done: number, total: number) => void
+}
+
+/** 候補 index ごとに独立な PRNG（黄金比ハッシュで index を分散し候補間の相関を避ける）。 */
+function candidateRng(seed: number, index: number): () => number {
+  return mulberry32((seed + Math.imul(index + 1, 0x9e3779b9)) >>> 0)
+}
+
+/** 初手候補（generateInitialBoards の index 指定）のチャンク評価。 */
+export function evaluateInitialChunk(
+  cards: readonly Card[],
+  dead: readonly Card[],
+  variant: Variant,
+  indices: readonly number[],
+  options: ChunkOptions = {},
+): CandidateMetric[] {
+  const { seed, onProgress, ...rest } = options
+  const boards = generateInitialBoards(cards)
+  const out = indices.map((index, i) => {
+    onProgress?.(i, indices.length)
+    const rng = seed !== undefined ? candidateRng(seed, index) : rest.rng
+    return { index, ...evaluateBoard(boards[index], dead, variant, { ...rest, rng }) }
+  })
+  onProgress?.(indices.length, indices.length)
+  return out
+}
+
+/** ストリート候補（generateStreetBoards の index 指定）のチャンク評価。捨て札は dead に含めて評価する。 */
+export function evaluateStreetChunk(
+  current: Board,
+  drawn: readonly Card[],
+  dead: readonly Card[],
+  variant: Variant,
+  indices: readonly number[],
+  options: ChunkOptions = {},
+): CandidateMetric[] {
+  const { seed, onProgress, ...rest } = options
+  const candidates = generateStreetBoards(current, drawn)
+  const out = indices.map((index, i) => {
+    onProgress?.(i, indices.length)
+    const { board, discarded } = candidates[index]
+    const rng = seed !== undefined ? candidateRng(seed, index) : rest.rng
+    return { index, ...evaluateBoard(board, [...dead, discarded], variant, { ...rest, rng }) }
+  })
+  onProgress?.(indices.length, indices.length)
+  return out
 }
 
 /** ストリート手を評価し、スコア降順で返す。 */
