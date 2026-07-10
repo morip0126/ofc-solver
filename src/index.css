@@ -388,6 +388,25 @@ button {
   box-shadow: 0 0 0 2px var(--sel);
 }
 
+/* 割当済みのプールカードは薄く（実体は段のプレビューに表示される） */
+.pool-card-btn.assigned {
+  opacity: 0.35;
+}
+
+.pool-card-btn.assigned.sel {
+  opacity: 0.8;
+}
+
+/* 段に表示する未確定の割当プレビュー */
+.row-card-btn.pending {
+  opacity: 0.65;
+}
+
+.row-card-btn.pending .card-glyph {
+  outline: 1.5px dashed var(--sel);
+  outline-offset: 1px;
+}
+
 /* 割当先バッジ（ト/ミ/ボ、自動捨て札は 捨）。非表示時もスペースを確保する。
    タップで トップ→ミドル→ボトム→未定 と循環し、段ごとに色分けする。 */
 .dest-badge {
