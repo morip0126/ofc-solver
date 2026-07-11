@@ -44,7 +44,8 @@
 - UI は実戦アシスタント（`App.tsx`）: プレイモード（初手→ストリート進行 + 推奨手）、
   対戦モード（vs ソルバー。ポジション制: OOP が先置き・IP は後追い、ハンドごとに交代。
   山札進行は `App.tsx` の進行ドライバ effect と `roundOf` の手番ゲート。ソルバーの情報は
-  自身の手札/捨て札 + Hero の公開盤面のみに制限）、FL モード。
+  自身の手札/捨て札 + Hero の公開盤面のみに制限。FL 突入/リステイは vsPending*FL で次ハンドへ
+  引き継ぎ、FL 側は一括配置・相手完成まで伏せ・手番ゲートなしの独立進行）、FL モード。
   Worker プロトコルは `solver.worker.ts`（evalInitialChunk / evalStreetChunk / solveFL / ev ほか）。
   設定・盤面は `persist.ts` が localStorage に自動保存（スキーマ変更時はキーの版数を上げる）。
   オフライン対応は `vite-plugin-pwa` の Service Worker（`vite.config.ts`）。

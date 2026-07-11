@@ -660,6 +660,13 @@ button {
   margin-top: 8px;
 }
 
+/* 次ハンドの FL 告知 */
+.fl-next {
+  color: var(--pos);
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
 .final-scores {
   display: flex;
   gap: 14px;
