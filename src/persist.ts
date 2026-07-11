@@ -49,6 +49,13 @@ export interface VsState {
   scored: boolean
   /** Hero が IP（後手 = 相手の配置を見てから置ける）か。ハンドごとに交代する。 */
   heroIsIP: boolean
+  /** 現在のハンドで Hero が FL 中なら配牌枚数（13〜17）、通常ハンドは 0。 */
+  heroFL: number
+  /** 現在のハンドでソルバーが FL 中なら配牌枚数、通常ハンドは 0。 */
+  villainFL: number
+  /** ハンド終了時に確定した、次ハンドの FL 枚数（突入 / リステイ）。 */
+  pendingHeroFL: number
+  pendingVillainFL: number
 }
 
 export interface PersistedGame {
@@ -186,6 +193,10 @@ export function saveGame(game: PersistedGame): void {
           villainDiscards: game.vs.villainDiscards.map(cardToString),
           scored: game.vs.scored,
           heroIsIP: game.vs.heroIsIP,
+          heroFL: game.vs.heroFL,
+          villainFL: game.vs.villainFL,
+          pendingHeroFL: game.vs.pendingHeroFL,
+          pendingVillainFL: game.vs.pendingVillainFL,
         }
       : null,
   })
@@ -277,12 +288,18 @@ export function loadGame(useJokers: boolean): PersistedGame | null {
       const vsRaw = o.vs as Record<string, unknown>
       const deck = parseCodes(vsRaw.deck ?? [], useJokers)
       if (deck.length > 54) throw new Error('vs deck too large')
+      const flNum = (v: unknown) =>
+        typeof v === 'number' && Number.isInteger(v) && v >= 13 && v <= 17 ? v : 0
       vs = {
         deck,
         villainHand: vsRaw.villainHand == null ? null : parseCodes(vsRaw.villainHand, useJokers),
         villainDiscards: parseCodes(vsRaw.villainDiscards ?? [], useJokers),
         scored: vsRaw.scored === true,
         heroIsIP: vsRaw.heroIsIP === true,
+        heroFL: flNum(vsRaw.heroFL),
+        villainFL: flNum(vsRaw.villainFL),
+        pendingHeroFL: flNum(vsRaw.pendingHeroFL),
+        pendingVillainFL: flNum(vsRaw.pendingVillainFL),
       }
     }
     assertNoDuplicates([

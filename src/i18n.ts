@@ -66,6 +66,23 @@ const messages = {
     ja: 'スコア = 各段の勝敗±1 + スクープ3 + ロイヤリティ差（ファウルは6点 + 相手ロイヤリティ献上）',
     en: 'Score = ±1 per row + 3 scoop + royalty diff (foul concedes 6 + opponent royalties)',
   },
+  vsFLStreet: { ja: 'FL 配牌 {n}枚', en: 'FL deal ({n} cards)' },
+  vsAssignHintFL: {
+    ja: 'カードを選択して段をタップし、13枚を配置してください（余りは自動で捨て札）',
+    en: 'Select cards and tap rows to place 13; the rest are discarded automatically',
+  },
+  vsFLFacedown: {
+    ja: 'ソルバーは FL 配牌をセット済み（あなたの完成まで伏せられています）',
+    en: 'Solver has set its FL hand (face down until you finish)',
+  },
+  vsNextFLYou: {
+    ja: '次のハンド: あなたは FL {n}枚',
+    en: 'Next hand: you are in Fantasyland ({n} cards)',
+  },
+  vsNextFLSolver: {
+    ja: '次のハンド: ソルバーが FL {n}枚',
+    en: 'Next hand: solver is in Fantasyland ({n} cards)',
+  },
 
   hero: { ja: 'Hero', en: 'Hero' },
   villainN: { ja: 'Villain {n}', en: 'Villain {n}' },
