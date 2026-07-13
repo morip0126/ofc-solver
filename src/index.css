@@ -667,6 +667,29 @@ button {
   margin-bottom: 6px;
 }
 
+/* プレイヤー別詳細（平均素点 / FL突入率 / FL継続率）の比較テーブル */
+.vs-player-stats {
+  display: grid;
+  grid-template-columns: auto 1fr 1fr;
+  gap: 2px 10px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+  font-variant-numeric: tabular-nums;
+}
+
+.vs-player-stats .vps-row {
+  display: contents;
+}
+
+.vs-player-stats .vps-head {
+  font-weight: 700;
+}
+
+.vs-player-stats .vps-label {
+  white-space: pre;
+}
+
 .final-scores {
   display: flex;
   gap: 14px;

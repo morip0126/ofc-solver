@@ -74,18 +74,44 @@ export interface VsPosStats {
   total: number
 }
 
-/** 対戦モードの通算成績（全体 + ポジション別）。 */
+/** プレイヤー（Hero / ソルバー）ごとの詳細成績。 */
+export interface VsPlayerStats {
+  /** 通常ハンド数（FL でないハンド）。FL 突入率の分母。 */
+  normalHands: number
+  /** FL 突入回数（配牌枚数別、14〜17）。 */
+  flEntries: Record<number, number>
+  /** FL ハンド数（配牌枚数別）。FL 継続率の分母。 */
+  flHands: Record<number, number>
+  /** FL リステイ回数（そのハンドの配牌枚数別）。 */
+  flStays: Record<number, number>
+  /** 素点（対戦スコア）の合計。平均素点 = scoreTotal / (normalHands + FLハンド数)。 */
+  scoreTotal: number
+}
+
+/** 対戦モードの通算成績（全体 + ポジション別 + プレイヤー別詳細）。 */
 export interface VsStats extends VsPosStats {
   oop: VsPosStats
   ip: VsPosStats
+  hero: VsPlayerStats
+  villain: VsPlayerStats
 }
 
 const zeroPosStats = (): VsPosStats => ({ hands: 0, wins: 0, total: 0 })
+
+const zeroPlayerStats = (): VsPlayerStats => ({
+  normalHands: 0,
+  flEntries: {},
+  flHands: {},
+  flStays: {},
+  scoreTotal: 0,
+})
 
 export const emptyVsStats = (): VsStats => ({
   ...zeroPosStats(),
   oop: zeroPosStats(),
   ip: zeroPosStats(),
+  hero: zeroPlayerStats(),
+  villain: zeroPlayerStats(),
 })
 
 const SETTINGS_KEY = 'ofc-solver:settings:v1'
@@ -356,10 +382,49 @@ function parsePosStats(v: unknown): VsPosStats {
   return { hands: num(o.hands), wins: num(o.wins), total: num(o.total) }
 }
 
+/** FL 枚数（13〜17）をキーとするカウント表のパース。 */
+function parseFLRecord(v: unknown): Record<number, number> {
+  if (typeof v !== 'object' || v === null) return {}
+  const out: Record<number, number> = {}
+  for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+    const n = Number(k)
+    if (
+      Number.isInteger(n) &&
+      n >= 13 &&
+      n <= 17 &&
+      typeof val === 'number' &&
+      Number.isFinite(val) &&
+      val >= 0
+    ) {
+      out[n] = val
+    }
+  }
+  return out
+}
+
+function parsePlayerStats(v: unknown): VsPlayerStats {
+  if (typeof v !== 'object' || v === null) return zeroPlayerStats()
+  const o = v as Record<string, unknown>
+  const num = (x: unknown) => (typeof x === 'number' && Number.isFinite(x) ? x : 0)
+  return {
+    normalHands: num(o.normalHands),
+    flEntries: parseFLRecord(o.flEntries),
+    flHands: parseFLRecord(o.flHands),
+    flStays: parseFLRecord(o.flStays),
+    scoreTotal: num(o.scoreTotal),
+  }
+}
+
 function parseVsStats(v: unknown): VsStats {
   if (typeof v !== 'object' || v === null) return emptyVsStats()
   const o = v as Record<string, unknown>
-  return { ...parsePosStats(v), oop: parsePosStats(o.oop), ip: parsePosStats(o.ip) }
+  return {
+    ...parsePosStats(v),
+    oop: parsePosStats(o.oop),
+    ip: parsePosStats(o.ip),
+    hero: parsePlayerStats(o.hero),
+    villain: parsePlayerStats(o.villain),
+  }
 }
 
 export function loadVsStatsByConfig(): VsStatsByConfig {
