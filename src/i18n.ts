@@ -62,6 +62,11 @@ const messages = {
     en: '{hands} hands / win {wr}% / total {total} pts',
   },
   vsResetStats: { ja: 'この設定の成績をリセット', en: 'Reset stats (this ruleset)' },
+  vsAvgScore: { ja: '平均素点', en: 'Avg score' },
+  vsFlEntryRate: { ja: 'FL突入率', en: 'FL entry' },
+  vsFlStayRate: { ja: 'FL継続率', en: 'FL stay' },
+  vsFlSizeEntry: { ja: '　FL{n}枚 突入', en: '  FL{n} entries' },
+  vsFlSizeStay: { ja: '　FL{n}枚 継続', en: '  FL{n} stays' },
   vsRules: {
     ja: 'スコア = 各段の勝敗±1 + スクープ3 + ロイヤリティ差（ファウルは6点 + 相手ロイヤリティ献上）',
     en: 'Score = ±1 per row + 3 scoop + royalty diff (foul concedes 6 + opponent royalties)',

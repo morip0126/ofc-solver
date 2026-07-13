@@ -36,6 +36,7 @@ import {
 } from './worker/solverClient'
 import {
   type Precision,
+  type VsPlayerStats,
   type VsPosStats,
   type VsStats,
   type VsStatsByConfig,
@@ -909,16 +910,38 @@ export default function App() {
         wins: p.wins + win,
         total: p.total + vsResult.score,
       })
+      // プレイヤー別詳細: 素点合計・FL 突入（枚数別）・FL 継続（枚数別）。
+      const bumpPlayer = (
+        p: VsPlayerStats,
+        curFL: number,
+        nextFL: number,
+        score: number,
+      ): VsPlayerStats => {
+        const flEntries = { ...p.flEntries }
+        const flHands = { ...p.flHands }
+        const flStays = { ...p.flStays }
+        let normalHands = p.normalHands
+        if (curFL > 0) {
+          flHands[curFL] = (flHands[curFL] ?? 0) + 1
+          if (nextFL > 0) flStays[curFL] = (flStays[curFL] ?? 0) + 1
+        } else {
+          normalHands++
+          if (nextFL > 0) flEntries[nextFL] = (flEntries[nextFL] ?? 0) + 1
+        }
+        return { normalHands, flEntries, flHands, flStays, scoreTotal: p.scoreTotal + score }
+      }
       const bucket: VsStats = {
         ...bump(s),
         oop: vsHeroIsIP ? s.oop : bump(s.oop),
         ip: vsHeroIsIP ? bump(s.ip) : s.ip,
+        hero: bumpPlayer(s.hero, vsHeroFL, vsResult.hero.nextFL, vsResult.score),
+        villain: bumpPlayer(s.villain, vsVillainFL, vsResult.villain.nextFL, -vsResult.score),
       }
       const next = { ...all, [vsConfig]: bucket }
       saveVsStatsByConfig(next)
       return next
     })
-  }, [vsResult, vsScored, vsHeroIsIP, vsConfig])
+  }, [vsResult, vsScored, vsHeroIsIP, vsConfig, vsHeroFL, vsVillainFL])
 
   // ---- 描画 ----
   const streetLabel =
@@ -1605,7 +1628,90 @@ function vsStatsText(lang: Lang, s: VsPosStats): string {
   })
 }
 
-/** 対戦モードの通算成績（現在のルール構成の全体 + ポジション別の内訳）。 */
+const sumValues = (rec: Record<number, number>) =>
+  Object.values(rec).reduce((a, b) => a + b, 0)
+
+const flSizesOf = (...recs: Record<number, number>[]) => {
+  const set = new Set<number>()
+  for (const rec of recs) {
+    for (const [k, v] of Object.entries(rec)) if (v > 0) set.add(Number(k))
+  }
+  return [...set].sort((a, b) => a - b)
+}
+
+function ratioText(num: number, den: number): string {
+  if (den <= 0) return '—'
+  return `${Math.round((num / den) * 100)}% (${num}/${den})`
+}
+
+/** プレイヤー別詳細（平均素点 / FL突入率 / FL継続率）の比較テーブル。 */
+function VsPlayerStatsView({ lang, stats }: { lang: Lang; stats: VsStats }) {
+  const players = [stats.hero, stats.villain]
+  const handsOf = (p: VsPlayerStats) => p.normalHands + sumValues(p.flHands)
+  if (players.every((p) => handsOf(p) === 0)) return null
+
+  const avgText = (p: VsPlayerStats) => {
+    const hands = handsOf(p)
+    if (hands === 0) return '—'
+    const avg = p.scoreTotal / hands
+    return `${avg >= 0 ? '+' : ''}${avg.toFixed(2)}`
+  }
+
+  // 枚数別の内訳行は、14枚以外の FL が記録されたときだけ出す（ノーマルでは冗長なため）。
+  const entrySizes = flSizesOf(stats.hero.flEntries, stats.villain.flEntries)
+  const staySizes = flSizesOf(stats.hero.flHands, stats.villain.flHands)
+  const showEntrySizes = entrySizes.some((n) => n !== 14)
+  const showStaySizes = staySizes.some((n) => n !== 14)
+
+  const rows: { label: string; values: [string, string] }[] = [
+    { label: t(lang, 'vsAvgScore'), values: [avgText(stats.hero), avgText(stats.villain)] },
+    {
+      label: t(lang, 'vsFlEntryRate'),
+      values: players.map((p) => ratioText(sumValues(p.flEntries), p.normalHands)) as [
+        string,
+        string,
+      ],
+    },
+    ...(showEntrySizes
+      ? entrySizes.map((n) => ({
+          label: t(lang, 'vsFlSizeEntry', { n }),
+          values: players.map((p) => `${p.flEntries[n] ?? 0}`) as [string, string],
+        }))
+      : []),
+    {
+      label: t(lang, 'vsFlStayRate'),
+      values: players.map((p) => ratioText(sumValues(p.flStays), sumValues(p.flHands))) as [
+        string,
+        string,
+      ],
+    },
+    ...(showStaySizes
+      ? staySizes.map((n) => ({
+          label: t(lang, 'vsFlSizeStay', { n }),
+          values: players.map((p) =>
+            ratioText(p.flStays[n] ?? 0, p.flHands[n] ?? 0),
+          ) as [string, string],
+        }))
+      : []),
+  ]
+
+  return (
+    <div className="vs-player-stats">
+      <span className="vps-head" />
+      <span className="vps-head">{t(lang, 'vsYou')}</span>
+      <span className="vps-head">{t(lang, 'solverName')}</span>
+      {rows.map((r) => (
+        <div className="vps-row" key={r.label}>
+          <span className="vps-label">{r.label}</span>
+          <span>{r.values[0]}</span>
+          <span>{r.values[1]}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/** 対戦モードの通算成績（現在のルール構成の全体 + ポジション別の内訳 + プレイヤー別詳細）。 */
 function VsStatsView({
   lang,
   stats,
@@ -1634,6 +1740,7 @@ function VsStatsView({
           {t(lang, 'vsPosIP')} {vsStatsText(lang, stats.ip)}
         </span>
       )}
+      <VsPlayerStatsView lang={lang} stats={stats} />
     </div>
   )
 }
