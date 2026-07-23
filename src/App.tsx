@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   type Card,
   DEFAULT_STAY_BONUS,
@@ -1132,7 +1132,7 @@ export default function App() {
                 : { gridTemplateColumns: `repeat(${expectedDraw}, minmax(0, 1fr))` }
             }
           >
-            {pool.map((c) => {
+            {pool.map((c, dealIdx) => {
               const id = cardId(c)
               const dest = assign[id]
               const drawComplete = pool.length === expectedDraw
@@ -1148,7 +1148,11 @@ export default function App() {
               const autoDiscard =
                 drawComplete && !dest && needAssigned < pool.length && assignedCount >= needAssigned
               return (
-                <div className="pool-card" key={id}>
+                <div
+                  className="pool-card"
+                  key={id}
+                  style={{ '--deal-i': dealIdx } as CSSProperties}
+                >
                   <button
                     type="button"
                     className={`pool-card-btn ${selectedPoolId === id ? 'sel' : ''} ${dest ? 'assigned' : ''}`}
@@ -1319,11 +1323,12 @@ export default function App() {
           <p className="hint">{t(lang, 'flPoolPrompt')}</p>
           {pool.length > 0 && (
             <div className="pool-cards wrap">
-              {pool.map((c) => (
+              {pool.map((c, dealIdx) => (
                 <button
                   type="button"
                   className="pool-card-btn"
                   key={cardId(c)}
+                  style={{ '--deal-i': dealIdx } as CSSProperties}
                   onClick={() => onPickerToggle(c)}
                 >
                   <CardGlyph card={c} />
@@ -1576,7 +1581,7 @@ function SuggestionView({
     return { row, added }
   })
   return (
-    <div className="suggestion">
+    <div className="suggestion" style={{ '--i': index } as CSSProperties}>
       <div className="sugg-main">
         <div className="sugg-placements">
           <span className="sugg-rank">#{index + 1}</span>

@@ -1,5 +1,9 @@
 :root {
   color-scheme: light dark;
+  /* モーション: タップ起点のUIは臨界減衰（オーバーシュートなし）を既定にする。
+     押下フィードバックは100ms、エントランスは減速カーブで0.2〜0.3s。 */
+  --press: 100ms ease-out;
+  --enter-ease: cubic-bezier(0.22, 0.9, 0.3, 1);
   --bg: #f7f7f8;
   --panel: #ffffff;
   --panel2: #f0f1f4;
@@ -57,17 +61,33 @@
   box-sizing: border-box;
 }
 
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
 body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  line-height: 1.5;
+  font-optical-sizing: auto;
+  -webkit-font-smoothing: antialiased;
+  /* ライト/ダーク切替の明度ジャンプを和らげる */
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 /* モバイル: ダブルタップズームの抑止・タップハイライト除去 */
 button {
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
+  font-family: inherit;
+}
+
+/* キーボード操作時のみフォーカスリングを出す */
+:focus-visible {
+  outline: 2px solid var(--sel);
+  outline-offset: 2px;
 }
 
 .card-picker,
@@ -80,7 +100,7 @@ button {
 .app {
   max-width: 560px;
   margin: 0 auto;
-  padding: 12px 12px 48px;
+  padding: 12px 12px calc(48px + env(safe-area-inset-bottom));
 }
 
 .app-header {
@@ -90,9 +110,12 @@ button {
   gap: 8px;
 }
 
+/* 見出しは大きくなるほどトラッキングを詰め、行間を締める */
 .app-header h1 {
   font-size: 20px;
   margin: 4px 0 0;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
 }
 
 .subtitle {
@@ -117,6 +140,25 @@ button {
 .ghost-btn:disabled {
   opacity: 0.4;
   cursor: default;
+}
+
+/* 押下した瞬間のフィードバック（release でなく pointer-down で反応する） */
+.lang-toggle,
+.ghost-btn,
+.primary-btn,
+.apply-btn,
+.ev-btn,
+.mode-toggle button {
+  transition: transform var(--press), opacity 0.15s ease, background-color 0.15s ease;
+}
+
+.lang-toggle:active,
+.ghost-btn:active:not(:disabled),
+.primary-btn:active:not(:disabled),
+.apply-btn:active,
+.ev-btn:active,
+.mode-toggle button:active {
+  transform: scale(0.96);
 }
 
 /* --- controls --- */
@@ -178,6 +220,24 @@ button {
   border-radius: 12px;
   padding: 10px 12px;
   margin-bottom: 10px;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.04);
+  animation: rise-in 0.28s var(--enter-ease) backwards;
+}
+
+/* エントランス: 下からわずかに浮き上がる（臨界減衰・オーバーシュートなし） */
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+/* カードの出現: 少し小さく・下から素早く整う */
+@keyframes card-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.7);
+  }
 }
 
 .panel-head {
@@ -192,6 +252,15 @@ button {
 .selectable {
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
+}
+
+/* 段の押下フィードバック（配置先を押した手応え） */
+.board-row.selectable {
+  transition: transform var(--press), outline-color 0.15s ease;
+}
+
+.board-row.selectable:active {
+  transform: scale(0.985);
 }
 
 .panel-title {
@@ -292,6 +361,17 @@ button {
   background: transparent;
   padding: 0;
   cursor: pointer;
+  transition: transform var(--press);
+}
+
+.row-card-btn:active {
+  transform: scale(0.9);
+}
+
+/* 段に置かれたカード・ソルバー盤面・捨て札の出現モーション（key が安定なので新規のみ発火） */
+.row-cards > *,
+.discard-line .card-glyph {
+  animation: card-in 0.22s var(--enter-ease) backwards;
 }
 
 .discard-line {
@@ -366,12 +446,18 @@ button {
   min-width: 0;
 }
 
+/* 配牌の出現: 左から順に素早くディール（--deal-i は JSX から） */
+.pool-cards > * {
+  animation: card-in 0.24s var(--enter-ease) backwards;
+  animation-delay: calc(var(--deal-i, 0) * 28ms);
+}
+
 .pool-card-btn {
   border: none;
   background: transparent;
   padding: 0;
   cursor: pointer;
-  transition: transform 0.08s ease;
+  transition: transform var(--press), opacity 0.2s ease;
 }
 
 /* タップの手応え（押した瞬間に少し沈む） */
@@ -386,6 +472,10 @@ button {
 
 .pool-card-btn.sel .card-glyph {
   box-shadow: 0 0 0 2px var(--sel);
+}
+
+.pool-card-btn .card-glyph {
+  transition: box-shadow 0.15s ease;
 }
 
 /* 割当済みのプールカードは薄く（実体は段のプレビューに表示される） */
@@ -468,6 +558,8 @@ button {
   border-radius: 9px;
   padding: 8px 10px;
   margin-bottom: 6px;
+  animation: rise-in 0.25s var(--enter-ease) backwards;
+  animation-delay: calc(var(--i, 0) * 35ms);
 }
 
 .sugg-main {
@@ -712,10 +804,24 @@ button {
 }
 
 /* --- card picker --- */
+/* 半透明マテリアルのフローティングレイヤー。コンテンツはこの下をスクロールする。
+   上端の明るいボーダー = マテリアルに当たる光。 */
 .card-picker {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  position: sticky;
+  bottom: calc(8px + env(safe-area-inset-bottom));
+  z-index: 10;
+  padding: 8px;
+  border-radius: 14px;
+  background: var(--panel);
+  background: color-mix(in srgb, var(--panel) 72%, transparent);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  backdrop-filter: blur(18px) saturate(160%);
+  border: 1px solid var(--border);
+  border-top-color: color-mix(in srgb, #ffffff 40%, var(--border));
+  box-shadow: 0 8px 28px rgb(0 0 0 / 0.14);
 }
 
 .picker-row {
@@ -738,6 +844,11 @@ button {
   justify-content: center;
   line-height: 1;
   font-variant-numeric: tabular-nums;
+  transition: transform var(--press), background-color 0.15s ease, opacity 0.15s ease;
+}
+
+.picker-cell:active:not(:disabled) {
+  transform: scale(0.85);
 }
 
 .picker-cell .rank {
@@ -783,4 +894,60 @@ button {
 
 .card-glyph.joker {
   line-height: 1;
+}
+
+/* ダークではマテリアル上端のハイライトを控えめに */
+@media (prefers-color-scheme: dark) {
+  .card-picker {
+    border-top-color: color-mix(in srgb, #ffffff 14%, var(--border));
+  }
+}
+
+/* --- アクセシビリティ: 3つの独立したシグナルに応答する --- */
+
+/* 動きの低減: 位置・スケールの動きを止め、不透明度のフェードだけ残す */
+@media (prefers-reduced-motion: reduce) {
+  .panel,
+  .suggestion,
+  .pool-cards > *,
+  .row-cards > *,
+  .discard-line .card-glyph {
+    animation: none;
+  }
+
+  .lang-toggle:active,
+  .ghost-btn:active,
+  .primary-btn:active,
+  .apply-btn:active,
+  .ev-btn:active,
+  .mode-toggle button:active,
+  .picker-cell:active,
+  .row-card-btn:active,
+  .pool-card-btn:active,
+  .board-row.selectable:active {
+    transform: none;
+  }
+
+  .pool-card-btn.sel {
+    transform: none;
+  }
+}
+
+/* 透明の低減: マテリアルを不透明にしてブラーを外す */
+@media (prefers-reduced-transparency: reduce) {
+  .card-picker {
+    background: var(--panel);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+/* 高コントラスト: 境界を明確に */
+@media (prefers-contrast: more) {
+  .panel,
+  .card-picker,
+  .board-row,
+  .picker-cell {
+    border-color: var(--muted);
+  }
 }
