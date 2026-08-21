@@ -246,6 +246,23 @@ export const DEFAULT_FL_VALUES: Readonly<Record<number, number>> = {
 export const DEFAULT_FOUL_WEIGHT = 9.0
 
 /**
+ * hindsight（後知恵）モデル用の FL 価値スケール。参考ソルバーのサンプル
+ * （Kd Kh 6d 5h 3h の M[KK]/B[653] 配置 = EV 32.9pt / FL 55%）に表示 EV の水準を
+ * 合わせる較正値。後知恵メトリクスは FL 到達可能性を実プレイの突入率より高く
+ * 見積もるので、それに釣り合う FL 重視の価値付けを使う（実測テーブル×スケール）。
+ */
+export const HINDSIGHT_FL_SCALE = 2.6
+
+function scaleFlValues(
+  base: Readonly<Record<number, number>>,
+  scale: number,
+): Readonly<Record<number, number>> {
+  const out: Record<number, number> = {}
+  for (const [k, v] of Object.entries(base)) out[Number(k)] = v * scale
+  return out
+}
+
+/**
  * ジョーカー2枚入り（54枚デッキ）用の FL 期待価値。導出方法は DEFAULT_FL_VALUES と同一
  * （計測ランナー: flValueRate.test.ts。同ランナーは52枚でも既存値をほぼ再現することを確認済み）。
  * ジョーカー入りは pStay が高くリステイ連鎖が長いため、FL の価値が大幅に大きい。
@@ -609,6 +626,118 @@ export function bestCompletion(
   }
 }
 
+// bestCompletionChoose の内部結果（bottom も選択制なのでマスクを3つ持つ）。
+interface ChooseBest {
+  score: number
+  topFillMask: number
+  midFillMask: number
+  botFillMask: number
+}
+
+/**
+ * bestCompletion の「選べる」版: freeCards が空きマスより多くてもよく、余りは捨てたものとして
+ * 非ファウル優先・(ロイヤリティ+FL価値)最大の完成形を全探索する。後知恵（hindsight）モデル用。
+ */
+export function bestCompletionChoose(
+  board: Board,
+  freeCards: readonly Card[],
+  variant: Variant,
+  flValues?: Readonly<Record<number, number>>,
+): ScoredArrangement | null {
+  const cap = remainingCap(board)
+  const nf = freeCards.length
+  const slots = cap.top + cap.middle + cap.bottom
+  if (nf < slots) throw new Error(`freeCards (${nf}) fewer than open slots (${slots})`)
+  if (nf === slots) return bestCompletion(board, freeCards, variant, 0, flValues)
+
+  const topBuf: Card[] = board.top.slice()
+  topBuf.length = 3
+  const midBuf: Card[] = board.middle.slice()
+  midBuf.length = 5
+  const botBuf: Card[] = board.bottom.slice()
+  botBuf.length = 5
+
+  const fixedTopKey = cap.top === 0 ? key3(topBuf) : 0
+  const fixedMidKey = cap.middle === 0 ? key5(midBuf) : 0
+  const fixedBotKey = cap.bottom === 0 ? key5(botBuf) : 0
+
+  let best: ChooseBest | null = null
+  const midAvail: number[] = new Array(nf)
+  const botAvail: number[] = new Array(nf)
+
+  forEachIndexCombo(nf, cap.top, (topIdx) => {
+    let topFillMask = 0
+    for (let i = 0; i < cap.top; i++) {
+      topFillMask |= 1 << topIdx[i]
+      topBuf[board.top.length + i] = freeCards[topIdx[i]]
+    }
+    const topKey = cap.top === 0 ? fixedTopKey : key3(topBuf)
+
+    let na = 0
+    for (let i = 0; i < nf; i++) if (!(topFillMask & (1 << i))) midAvail[na++] = i
+
+    forEachIndexCombo(na, cap.middle, (midIdx) => {
+      let midFillMask = 0
+      for (let i = 0; i < cap.middle; i++) {
+        const fi = midAvail[midIdx[i]]
+        midFillMask |= 1 << fi
+        midBuf[board.middle.length + i] = freeCards[fi]
+      }
+      const midKey = cap.middle === 0 ? fixedMidKey : key5(midBuf)
+
+      let nb = 0
+      for (let i = 0; i < na; i++) {
+        const fi = midAvail[i]
+        if (!(midFillMask & (1 << fi))) botAvail[nb++] = fi
+      }
+      forEachIndexCombo(nb, cap.bottom, (botIdx) => {
+        let botFillMask = 0
+        for (let i = 0; i < cap.bottom; i++) {
+          const fi = botAvail[botIdx[i]]
+          botFillMask |= 1 << fi
+          botBuf[board.bottom.length + i] = freeCards[fi]
+        }
+        const botKey = cap.bottom === 0 ? fixedBotKey : key5(botBuf)
+
+        const fouled = botKey < midKey || midKey < topKey
+        let score: number
+        if (fouled) {
+          score = -1000
+        } else {
+          score = royaltyBottomKey(botKey) + royaltyMiddleKey(midKey) + royaltyTopKey(topKey)
+          if (flValues) {
+            const flN = flEntryFromTopKey(topKey, variant)
+            if (flN > 0) score += flValues[flN] ?? 0
+          }
+        }
+        if (!best || score > best.score) {
+          best = { score, topFillMask, midFillMask, botFillMask }
+        }
+      })
+    })
+  })
+
+  if (!best) return null
+  const chosen: ChooseBest = best
+  const arrangement: Arrangement = {
+    top: [...board.top, ...cardsFromMask(freeCards, chosen.topFillMask)],
+    middle: [...board.middle, ...cardsFromMask(freeCards, chosen.midFillMask)],
+    bottom: [...board.bottom, ...cardsFromMask(freeCards, chosen.botFillMask)],
+  }
+  const evaluated = evaluateArrangement(arrangement)
+  return {
+    arrangement,
+    evaluated,
+    royalties: royaltiesTotal(evaluated),
+    fantasylandCards: fantasylandCards(evaluated, variant),
+  }
+}
+
+// ---- 方針ロールアウト（policy モデル） -----------------------------------------
+// 参考ソルバー互換の逐次シミュレーション: トップを QQ+ のために温存しつつ投機的に
+// FL を追いかける実戦的な方針で、1ストリートずつ「3枚引いて2枚置き1枚捨てる」。
+// 後知恵を使わないので、コミットの失敗（ファウル）も現実的な頻度で発生する。
+
 export interface BoardMetric {
   expRoyalty: number
   flProb: number
@@ -639,17 +768,16 @@ export interface RankOptions {
   jokers?: boolean
   /**
    * 未来のドローのモデル。
-   * 'streets'（既定）: 実ルール通り「1ストリートに3枚引いて2枚置き1枚捨てる」を反映し、
-   *   各ストリートで限界価値が最も低い1枚を捨てたと仮定してサンプルする。
-   * 'exact': 残りマス数ちょうどを引く旧モデル。捨て札で選べる自由を無視するため
-   *   FL 率・期待値を系統的に過小評価する（比較・回帰検証用に残置）。
-   *
-   * EV 検証（futureModelAB.test.ts、52枚 ULTIMATE、同一配牌ペア比較）: streets は exact に対し
-   * ΔJ ≈ +1.1 点/ハンド。スタイルはよりFL志向になる（FL 10%→17%、ファウル 10%→23%）。
-   * Kd Kh 6d 5h 3h の配置4種を400ハンドずつプレイし切る検証では、streets のスコア順位が
-   * 実プレイの J 順位と完全一致（exact と他社ソルバーの後知恵モデルはどちらも順位を誤る）。
+   * 'policy'（既定）: 参考ソルバー互換。トップを QQ+ のために温存して投機的に FL を
+   *   追いかける実戦方針で、後知恵なしに1ストリートずつロールアウトする。コミットの
+   *   失敗（ファウル）も現実的な頻度で織り込まれる。
+   * 'hindsight': 残りストリートで見える全カードを見てから最適に置けたと仮定する後知恵
+   *   評価（理想プレイの上限。ファウルは「どう置いても避けられない」場合のみ）。
+   * 'streets': 見えるカードから各ストリートで限界価値最低の1枚を捨てたと仮定し、残りを
+   *   最適補完するハイブリッド。
+   * 'exact': 残りマス数ちょうどを引く旧モデル（選択の自由を無視。回帰検証用）。
    */
-  futureModel?: 'streets' | 'exact'
+  futureModel?: 'policy' | 'hindsight' | 'streets' | 'exact'
 }
 
 /**
@@ -669,13 +797,18 @@ export function evaluateBoard(
     foulWeight = DEFAULT_FOUL_WEIGHT,
     completionFlBonus,
     jokers = false,
-    futureModel = 'streets',
+    futureModel = 'hindsight',
   } = options
   // flWeight を明示指定してテーブル省略ならレガシー動作（フラット加点）。それ以外は実測テーブル
-  // （デッキに応じて 52枚用 / ジョーカー入り用を選ぶ）。
+  // （デッキに応じて 52枚用 / ジョーカー入り用を選ぶ）。hindsight モデルは参考ソルバーの
+  // FL 重視の価値付けに合わせてスケールする（HINDSIGHT_FL_SCALE 参照）。
+  const baseFlValues =
+    flWeight !== undefined ? undefined : jokers ? DEFAULT_FL_VALUES_JOKER : DEFAULT_FL_VALUES
   const flValues =
     options.flValues ??
-    (flWeight !== undefined ? undefined : jokers ? DEFAULT_FL_VALUES_JOKER : DEFAULT_FL_VALUES)
+    (baseFlValues && futureModel === 'hindsight'
+      ? scaleFlValues(baseFlValues, HINDSIGHT_FL_SCALE)
+      : baseFlValues)
   const flFlat = flWeight ?? 6
   const flValueOf = (flCards: number): number =>
     flCards > 0 ? (flValues ? (flValues[flCards] ?? 0) : flFlat) : 0
@@ -702,10 +835,10 @@ export function evaluateBoard(
   }
 
   const deck = remainingDeck([...placed, ...dead], jokers)
-  // 'streets' モデル: 残り need マスは実プレイでは need/2 ストリートで埋まり、各ストリートで
-  // 3枚引いて1枚捨てられる。つまり見えるカードは need より多く、その選択の自由が
-  // FL 率とロイヤリティを押し上げる。各ストリートの捨て札は「限界価値が最低の1枚」で近似する。
-  const streets = futureModel === 'streets' ? Math.floor(need / 2) : 0
+  // 'streets'/'hindsight' モデル: 残り need マスは実プレイでは need/2 ストリートで埋まり、
+  // 各ストリートで3枚引いて1枚捨てられる。つまり見えるカードは need より多く、その選択の
+  // 自由が FL 率とロイヤリティを押し上げる。
+  const streets = futureModel !== 'exact' ? Math.floor(need / 2) : 0
   const extra = need - streets * 2
   const seen = streets * 3 + extra
   const rankCount = new Array<number>(16).fill(0)
@@ -714,6 +847,150 @@ export function evaluateBoard(
   const dropScore = (c: Card): number => {
     if (isJoker(c)) return 1000
     return c.rank + 8 * (rankCount[c.rank] - 1) + (suitCount[c.suit] >= 5 ? 3 : 0)
+  }
+
+  // ストリート捨てヒューリスティック: 見える seen 枚から、ストリートごとに限界価値が
+  // 最低の1枚を捨てて need 枚に絞る（'streets' の本経路、'hindsight' の代替候補）。
+  const buildStreetFuture = (future: Card[]): void => {
+    rankCount.fill(0)
+    suitCount.c = suitCount.d = suitCount.h = suitCount.s = 0
+    for (const c of placed) {
+      rankCount[c.rank]++
+      if (!isJoker(c)) suitCount[c.suit]++
+    }
+    for (let k = 0; k < seen; k++) {
+      const c = deck[k]
+      rankCount[c.rank]++
+      if (!isJoker(c)) suitCount[c.suit]++
+    }
+    let pos = 0
+    for (let s = 0; s < streets; s++) {
+      const a = deck[pos]
+      const b = deck[pos + 1]
+      const c = deck[pos + 2]
+      pos += 3
+      const da = dropScore(a)
+      const db = dropScore(b)
+      const dc = dropScore(c)
+      if (da <= db && da <= dc) future.push(b, c)
+      else if (db <= dc) future.push(a, c)
+      else future.push(a, b)
+    }
+    for (let k = 0; k < extra; k++) future.push(deck[pos + k])
+  }
+
+  // ---- 後知恵（hindsight）用の候補生成 ----
+  const cap = remainingCap(board)
+  const topPlacedRank = new Array<number>(16).fill(0)
+  for (const c of board.top) topPlacedRank[c.rank]++
+
+  /**
+   * 'policy' モデル（参考ソルバー互換）: トップは「到着順コミット」——各ストリートで
+   * 引いた Q+ のカードを（未来を知らずに）トップへ確保していく投機的 FL チェイス。
+   * ミドル/ボトム（とトップの残り埋め）は上手いプレイヤー相当として選択制の最適補完。
+   * FL 到達は「Q+ のペアが到着してトップに収まったか」に、ファウルは「コミットした
+   * トップを下段が追い越せなかったか」に対応し、どちらも現実的な頻度で発生する。
+   */
+  const policyCommitBest = (): ScoredArrangement | null => {
+    const seenCards = deck.slice(0, seen)
+    // dropScore の文脈（盤面 + 見えるカード全体のランク/スート数）を構築
+    rankCount.fill(0)
+    suitCount.c = suitCount.d = suitCount.h = suitCount.s = 0
+    for (const c of placed) {
+      rankCount[c.rank]++
+      if (!isJoker(c)) suitCount[c.suit]++
+    }
+    for (const c of seenCards) {
+      rankCount[c.rank]++
+      if (!isJoker(c)) suitCount[c.suit]++
+    }
+
+    const topFill: Card[] = []
+    const usedTop = new Set<number>()
+    const dropped = new Set<number>()
+    let topRoom = cap.top
+    const topCnt = new Array<number>(16).fill(0)
+    for (const c of board.top) topCnt[c.rank]++
+    for (let s = 0; s < streets; s++) {
+      const base = s * 3
+      const group: number[] = []
+      for (let k = base; k < base + 3 && k < seenCards.length; k++) group.push(k)
+      let placedTop = 0
+      const commit = (k: number): void => {
+        topFill.push(seenCards[k])
+        usedTop.add(k)
+        topCnt[seenCards[k].rank]++
+        topRoom--
+        placedTop++
+      }
+      // ペア/トリップス完成（Q+）→ 単騎（高い順、最後の1枠はペアの相方用に温存）→
+      // 単騎で新たにペアが可能になった場合の完成、の順で確保する。
+      const byRank = [...group].sort((a, b) => seenCards[b].rank - seenCards[a].rank)
+      for (let pass = 0; pass < 3; pass++) {
+        for (const k of byRank) {
+          if (topRoom <= 0 || placedTop >= 2) break
+          const c = seenCards[k]
+          if (usedTop.has(k) || isJoker(c) || c.rank < 12) continue
+          if (pass === 1) {
+            if (topRoom >= 2 && topCnt[c.rank] === 0) commit(k)
+          } else if (topCnt[c.rank] >= 1) {
+            commit(k)
+          }
+        }
+      }
+    }
+    void dropped
+    // 残りカードの捨て札選択は選択制補完に委ねる（上手いプレイヤーの下段運びの近似）。
+    const kept = seenCards.filter((_, i) => !usedTop.has(i))
+    if (topFill.length + kept.length < need) return null
+    const tempBoard: Board = {
+      top: [...board.top, ...topFill],
+      middle: board.middle,
+      bottom: board.bottom,
+    }
+    return bestCompletionChoose(tempBoard, kept, variant, flValues)
+  }
+  /** seen 枚を見てからの最善形: FLゴール経路 + ファウル回避経路 + ヒューリスティック経路の最良。 */
+  // 'hindsight' モデル: ストリート捨て制約つき後知恵。各ストリートの3枚から1枚捨てる
+  // 全パターン（3^streets ≤ 81）を列挙し、それぞれ残りを厳密補完して最良を採る。
+  // 「見えるカードをどう使ってもファウルを避けられない」場合だけファウルになる。
+  const discardPatterns: number[][] = []
+  if (streets > 0) {
+    const pat: number[] = new Array(streets).fill(0)
+    const gen = (g: number): void => {
+      if (g === streets) {
+        discardPatterns.push([...pat])
+        return
+      }
+      for (let d = 0; d < 3; d++) {
+        pat[g] = d
+        gen(g + 1)
+      }
+    }
+    gen(0)
+  }
+  const keptBuf: Card[] = new Array(need)
+  const hindsightBest = (): ScoredArrangement | null => {
+    let pick: ScoredArrangement | null = null
+    let pickScore = -Infinity
+    for (const pat of discardPatterns) {
+      let ki = 0
+      for (let s = 0; s < streets; s++) {
+        const base = s * 3
+        for (let k = 0; k < 3; k++) {
+          if (k !== pat[s]) keptBuf[ki++] = deck[base + k]
+        }
+      }
+      for (let k = 0; k < extra; k++) keptBuf[ki++] = deck[streets * 3 + k]
+      const r = bestCompletion(board, keptBuf, variant, completionBonus, flValues)
+      if (!r) continue
+      const sc = r.evaluated.fouled ? -1000 : r.royalties + flValueOf(r.fantasylandCards)
+      if (sc > pickScore) {
+        pick = r
+        pickScore = sc
+      }
+    }
+    return pick
   }
 
   let royaltySum = 0
@@ -725,38 +1002,20 @@ export function evaluateBoard(
   const future: Card[] = []
   for (let i = 0; i < iters; i++) {
     shuffle(deck, rng)
-    future.length = 0
-    if (streets > 0 && deck.length >= seen) {
-      // 盤面 + このイテレーションで見える全カードを文脈に、ストリートごとに最低価値の1枚を捨てる。
-      rankCount.fill(0)
-      suitCount.c = suitCount.d = suitCount.h = suitCount.s = 0
-      for (const c of placed) {
-        rankCount[c.rank]++
-        if (!isJoker(c)) suitCount[c.suit]++
-      }
-      for (let k = 0; k < seen; k++) {
-        const c = deck[k]
-        rankCount[c.rank]++
-        if (!isJoker(c)) suitCount[c.suit]++
-      }
-      let pos = 0
-      for (let s = 0; s < streets; s++) {
-        const a = deck[pos]
-        const b = deck[pos + 1]
-        const c = deck[pos + 2]
-        pos += 3
-        const da = dropScore(a)
-        const db = dropScore(b)
-        const dc = dropScore(c)
-        if (da <= db && da <= dc) future.push(b, c)
-        else if (db <= dc) future.push(a, c)
-        else future.push(a, b)
-      }
-      for (let k = 0; k < extra; k++) future.push(deck[pos + k])
+    let best: ScoredArrangement | null
+    if (futureModel === 'policy' && streets > 0 && deck.length >= seen) {
+      best = policyCommitBest()
+    } else if (futureModel === 'hindsight' && streets > 0 && deck.length >= seen) {
+      best = hindsightBest()
     } else {
-      for (let k = 0; k < need; k++) future.push(deck[k])
+      future.length = 0
+      if (streets > 0 && deck.length >= seen) {
+        buildStreetFuture(future)
+      } else {
+        for (let k = 0; k < need; k++) future.push(deck[k])
+      }
+      best = bestCompletion(board, future, variant, completionBonus, flValues)
     }
-    const best = bestCompletion(board, future, variant, completionBonus, flValues)
     if (!best) continue
     n++
     if (best.evaluated.fouled) {

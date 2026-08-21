@@ -8,6 +8,7 @@ import {
   type Board,
   DEFAULT_FL_VALUES,
   DEFAULT_FL_VALUES_JOKER,
+  HINDSIGHT_FL_SCALE,
   bestCompletion,
   estimateEVvsRandom,
   evaluateBoard,
@@ -128,14 +129,19 @@ describe('evaluateBoard FL value table selection', () => {
     bottom: parseCards('Kc Kd 9h 9s 7d'),
   }
 
-  it('uses the 52-card table by default', () => {
+  it('uses the 52-card table by default (hindsight はスケール適用)', () => {
     const m = evaluateBoard(board, [], ULTIMATE)
     expect(m.foulProb).toBe(0)
-    expect(m.flEV).toBe(DEFAULT_FL_VALUES[14])
+    expect(m.flEV).toBeCloseTo(DEFAULT_FL_VALUES[14] * HINDSIGHT_FL_SCALE, 6)
   })
 
   it('uses the joker table when jokers=true', () => {
     const m = evaluateBoard(board, [], ULTIMATE, { jokers: true })
-    expect(m.flEV).toBe(DEFAULT_FL_VALUES_JOKER[14])
+    expect(m.flEV).toBeCloseTo(DEFAULT_FL_VALUES_JOKER[14] * HINDSIGHT_FL_SCALE, 6)
+  })
+
+  it('streets モデルは実測テーブルをそのまま使う', () => {
+    const m = evaluateBoard(board, [], ULTIMATE, { futureModel: 'streets' })
+    expect(m.flEV).toBe(DEFAULT_FL_VALUES[14])
   })
 })
