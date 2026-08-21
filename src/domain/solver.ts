@@ -768,17 +768,25 @@ export interface RankOptions {
   jokers?: boolean
   /**
    * 未来のドローのモデル。
-   * 'policy'（既定）: 参考ソルバー互換。トップを QQ+ のために温存して投機的に FL を
-   *   追いかける実戦方針で、後知恵なしに1ストリートずつロールアウトする。コミットの
-   *   失敗（ファウル）も現実的な頻度で織り込まれる。
+   * 'policy'（既定）: トップを QQ+ のために温存して投機的に FL を追いかける固定方針で、
+   *   後知恵なしに1ストリートずつロールアウトする軽量近似。コミットの失敗（ファウル）も
+   *   現実的な頻度で織り込まれる。
+   * 'rollout': 逐次最適プレイのロールアウト（最重量・最高品質）。各ストリートで
+   *   「3枚から2枚置き1枚捨て」の全合法手を内側モンテカルロで採点し、固定方針なしに
+   *   その都度最良の手を選んでプレイし切る。トップに置くかどうかも毎回 EV で判断される。
+   *   反復1回あたり内側評価が走るため計算コストは policy の数十倍（精度「解析」用）。
    * 'hindsight': 残りストリートで見える全カードを見てから最適に置けたと仮定する後知恵
    *   評価（理想プレイの上限。ファウルは「どう置いても避けられない」場合のみ）。
    * 'streets': 見えるカードから各ストリートで限界価値最低の1枚を捨てたと仮定し、残りを
    *   最適補完するハイブリッド。
    * 'exact': 残りマス数ちょうどを引く旧モデル（選択の自由を無視。回帰検証用）。
    */
-  futureModel?: 'policy' | 'hindsight' | 'streets' | 'exact'
+  futureModel?: FutureModel
+  /** 'rollout' の各ストリート手選択に使う内側モンテカルロの反復数（既定 6）。 */
+  rolloutInner?: number
 }
+
+export type FutureModel = 'policy' | 'rollout' | 'hindsight' | 'streets' | 'exact'
 
 /**
  * 部分盤面の価値を、楽観的補完（残りは最適に置ける前提）のモンテカルロで推定する。
@@ -1042,6 +1050,63 @@ export function evaluateBoard(
     return pick
   }
 
+  /**
+   * 'rollout' モデル: 逐次最適プレイのロールアウト。deck（シャッフル済み）の先頭から
+   * 3枚ずつ引き、各ストリートで全合法手（2枚置き1枚捨て）を内側モンテカルロ
+   * （futureModel:'streets'、軽量）で採点して最良を選ぶ。固定方針なし・後知恵なし。
+   */
+  const rolloutInner = options.rolloutInner ?? 16
+  const rolloutBest = (): ScoredArrangement | null => {
+    const cur: Board = { top: [...board.top], middle: [...board.middle], bottom: [...board.bottom] }
+    const curDead: Card[] = [...dead]
+    let pos = 0
+    let remaining = need
+    while (remaining >= 2 && deck.length - pos >= 3) {
+      const drawn = [deck[pos], deck[pos + 1], deck[pos + 2]]
+      pos += 3
+      const cands = generateStreetBoards(cur, drawn)
+      let bestIdx = -1
+      let bestScore = -Infinity
+      // 共通乱数法: この手選択では全候補に同じ「未来の引き」を見せる（比較ノイズを相殺）。
+      const stSeed = (rng() * 0x100000000) >>> 0
+      for (let ci = 0; ci < cands.length; ci++) {
+        const m = evaluateBoard(cands[ci].board, [...curDead, cands[ci].discarded], variant, {
+          iters: rolloutInner,
+          rng: mulberry32(stSeed),
+          flValues,
+          foulWeight,
+          jokers,
+          futureModel: 'streets',
+        })
+        if (m.score > bestScore) {
+          bestScore = m.score
+          bestIdx = ci
+        }
+      }
+      if (bestIdx < 0) return null
+      const chosen = cands[bestIdx]
+      cur.top = chosen.board.top
+      cur.middle = chosen.board.middle
+      cur.bottom = chosen.board.bottom
+      curDead.push(chosen.discarded)
+      remaining -= 2
+    }
+    if (remaining > 0) {
+      // 端数（変則盤面の保険）: 残りマスちょうど引いて最適補完
+      if (deck.length - pos < remaining) return null
+      const r = bestCompletion(cur, deck.slice(pos, pos + remaining), variant, completionBonus, flValues)
+      return r
+    }
+    const arrangement = cur as Arrangement
+    const evaluated = evaluateArrangement(arrangement)
+    return {
+      arrangement,
+      evaluated,
+      royalties: royaltiesTotal(evaluated),
+      fantasylandCards: fantasylandCards(evaluated, variant),
+    }
+  }
+
   let royaltySum = 0
   let flCount = 0
   let flValueSum = 0
@@ -1052,7 +1117,9 @@ export function evaluateBoard(
   for (let i = 0; i < iters; i++) {
     shuffle(deck, rng)
     let best: ScoredArrangement | null
-    if (futureModel === 'policy' && streets > 0 && deck.length >= seen) {
+    if (futureModel === 'rollout' && need >= 2 && deck.length >= need + Math.floor(need / 2)) {
+      best = rolloutBest()
+    } else if (futureModel === 'policy' && streets > 0 && deck.length >= seen) {
       best = policyCommitBest()
     } else if (futureModel === 'hindsight' && streets > 0 && deck.length >= seen) {
       best = hindsightBest()

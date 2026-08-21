@@ -7,6 +7,7 @@ import {
   DEFAULT_STAY_BONUS,
   DEFAULT_STAY_BONUS_JOKER,
   type FantasylandResult,
+  type FutureModel,
   type VariantId,
   VARIANTS,
   cardToString,
@@ -96,6 +97,7 @@ export type WorkerRequest =
       iters: number
       seed: number
       jokers?: boolean
+      futureModel?: FutureModel
     }
   | {
       id: number
@@ -108,6 +110,7 @@ export type WorkerRequest =
       iters: number
       seed: number
       jokers?: boolean
+      futureModel?: FutureModel
     }
 
 export type WorkerResponse =
@@ -228,6 +231,7 @@ self.onmessage = (e: MessageEvent<WorkerRequest>) => {
             iters: msg.iters,
             seed: msg.seed,
             jokers: msg.jokers,
+            futureModel: msg.futureModel,
             onProgress: progressReporter(msg.id),
           },
         )
@@ -245,6 +249,7 @@ self.onmessage = (e: MessageEvent<WorkerRequest>) => {
             iters: msg.iters,
             seed: msg.seed,
             jokers: msg.jokers,
+            futureModel: msg.futureModel,
             onProgress: progressReporter(msg.id),
           },
         )

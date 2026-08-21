@@ -11,6 +11,7 @@ import {
   type Board,
   type BoardMetric,
   type Card,
+  type FutureModel,
   type VariantId,
   cardToString,
   choose,
@@ -252,6 +253,8 @@ export interface SuggestInitialParams {
   variantId: VariantId
   jokers: boolean
   iters: number
+  /** 精評価段に使う未来モデル（省略時は evaluateBoard の既定 'policy'）。 */
+  futureModel?: FutureModel
 }
 
 /**
@@ -262,18 +265,23 @@ export function suggestInitialParallel(
   params: SuggestInitialParams,
   onProgress?: (frac: number) => void,
 ): PoolTask<SuggestionDTO[]> {
-  const { cards, dead, variantId, jokers, iters } = params
+  const { cards, dead, variantId, jokers, iters, futureModel } = params
   const boards = generateInitialBoards(cards)
   const coarseIters = Math.max(8, Math.round(iters / 8))
   const totalUnits = boards.length + REFINE_TOP_K
   const cardCodes = cards.map(cardToString)
   const deadCodes = dead.map(cardToString)
-  const seed = hashSeed('initial', cardCodes.join(), deadCodes.join(), variantId, jokers, iters)
+  const seed = hashSeed('initial', cardCodes.join(), deadCodes.join(), variantId, jokers, iters, futureModel ?? '')
 
   let canceled = false
   let inner: PoolTask<WorkerResponse[]> | null = null
 
-  const chunkReq = (indices: number[], chunkIters: number, chunkSeed: number): WorkerRequest => ({
+  const chunkReq = (
+    indices: number[],
+    chunkIters: number,
+    chunkSeed: number,
+    model?: FutureModel,
+  ): WorkerRequest => ({
     id: 0,
     kind: 'evalInitialChunk',
     cards: cardCodes,
@@ -283,6 +291,7 @@ export function suggestInitialParallel(
     indices,
     iters: chunkIters,
     seed: chunkSeed,
+    futureModel: model,
   })
 
   const run = async (): Promise<SuggestionDTO[]> => {
@@ -298,7 +307,7 @@ export function suggestInitialParallel(
     const refineIdx = coarse.slice(0, REFINE_TOP_K).map((c) => c.index)
     const refineSpecs = splitIndices(refineIdx.length, solverPool.size).map((slice) => ({
       units: slice.length,
-      req: chunkReq(slice.map((i) => refineIdx[i]), iters, seed + 1),
+      req: chunkReq(slice.map((i) => refineIdx[i]), iters, seed + 1, futureModel),
     }))
     inner = runChunks(refineSpecs, (d) => onProgress?.((boards.length + d) / totalUnits))
     const refined = chunkResults(await inner.promise)
@@ -330,6 +339,7 @@ export interface SuggestStreetParams {
   variantId: VariantId
   jokers: boolean
   iters: number
+  futureModel?: FutureModel
 }
 
 /** ストリート手の推奨（候補をプール全体へ分割評価）。 */
@@ -337,7 +347,7 @@ export function suggestStreetParallel(
   params: SuggestStreetParams,
   onProgress?: (frac: number) => void,
 ): PoolTask<SuggestionDTO[]> {
-  const { board, drawn, dead, variantId, jokers, iters } = params
+  const { board, drawn, dead, variantId, jokers, iters, futureModel } = params
   const candidates = generateStreetBoards(board, drawn)
   const dto = boardDTO(board)
   const drawnCodes = drawn.map(cardToString)
@@ -352,6 +362,7 @@ export function suggestStreetParallel(
     variantId,
     jokers,
     iters,
+    futureModel ?? '',
   )
 
   const specs = splitIndices(candidates.length, solverPool.size).map((indices) => ({
@@ -367,6 +378,7 @@ export function suggestStreetParallel(
       indices,
       iters,
       seed,
+      futureModel,
     } satisfies WorkerRequest,
   }))
   const inner = runChunks(specs, (d, t) => onProgress?.(t > 0 ? d / t : 0))
