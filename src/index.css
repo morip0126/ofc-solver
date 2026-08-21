@@ -614,6 +614,13 @@ button {
   color: var(--muted);
 }
 
+/* FL 種別内訳（QQ/KK/AA/3x）はメトリクス行の下に一回り控えめに表示 */
+.sugg-fl-breakdown {
+  margin-top: 2px;
+  font-size: 10px;
+  opacity: 0.85;
+}
+
 .sugg-metrics strong {
   color: var(--text);
 }

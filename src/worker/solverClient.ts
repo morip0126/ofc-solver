@@ -195,8 +195,22 @@ function splitIndices(total: number, parts: number): number[][] {
   return out
 }
 
-function randomSeed(): number {
-  return (Math.random() * 0xffffffff) >>> 0
+/**
+ * 局面から決定論的にシードを導出する（FNV-1a）。同じ局面・同じ設定なら常に同じ
+ * 「未来の引き」のセットで評価されるため、再計算しても推奨手・EV が変わらない。
+ */
+function hashSeed(...parts: (string | number | boolean)[]): number {
+  let h = 0x811c9dc5
+  for (const part of parts) {
+    const s = String(part)
+    for (let i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i)
+      h = Math.imul(h, 0x01000193)
+    }
+    h ^= 0x7c
+    h = Math.imul(h, 0x01000193)
+  }
+  return h >>> 0
 }
 
 function boardDTO(board: Board): BoardDTO {
@@ -218,6 +232,7 @@ function toSuggestionDTO(
     expRoyalty: m.expRoyalty,
     flProb: m.flProb,
     foulProb: m.foulProb,
+    flBreakdown: m.flBreakdown,
     score: m.score,
   }
 }
@@ -251,9 +266,9 @@ export function suggestInitialParallel(
   const boards = generateInitialBoards(cards)
   const coarseIters = Math.max(8, Math.round(iters / 8))
   const totalUnits = boards.length + REFINE_TOP_K
-  const seed = randomSeed()
   const cardCodes = cards.map(cardToString)
   const deadCodes = dead.map(cardToString)
+  const seed = hashSeed('initial', cardCodes.join(), deadCodes.join(), variantId, jokers, iters)
 
   let canceled = false
   let inner: PoolTask<WorkerResponse[]> | null = null
@@ -324,10 +339,20 @@ export function suggestStreetParallel(
 ): PoolTask<SuggestionDTO[]> {
   const { board, drawn, dead, variantId, jokers, iters } = params
   const candidates = generateStreetBoards(board, drawn)
-  const seed = randomSeed()
   const dto = boardDTO(board)
   const drawnCodes = drawn.map(cardToString)
   const deadCodes = dead.map(cardToString)
+  const seed = hashSeed(
+    'street',
+    dto.top.join(),
+    dto.middle.join(),
+    dto.bottom.join(),
+    drawnCodes.join(),
+    deadCodes.join(),
+    variantId,
+    jokers,
+    iters,
+  )
 
   const specs = splitIndices(candidates.length, solverPool.size).map((indices) => ({
     units: indices.length,
@@ -382,7 +407,17 @@ export function estimateEvParallel(
   const per = Math.ceil(iters / parts)
   const dto = boardDTO(board)
   const deadCodes = dead.map(cardToString)
-  const baseSeed = randomSeed()
+  const baseSeed = hashSeed(
+    'ev',
+    dto.top.join(),
+    dto.middle.join(),
+    dto.bottom.join(),
+    deadCodes.join(),
+    variantId,
+    jokers,
+    opponents,
+    iters,
+  )
 
   const specs: ChunkSpec[] = []
   for (let i = 0, remaining = iters; remaining > 0; i++, remaining -= per) {

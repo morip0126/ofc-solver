@@ -98,6 +98,7 @@ const PRECISION_ITERS: Record<Precision, { initial: number; street: number; ev: 
   fast: { initial: 60, street: 80, ev: 150 },
   standard: { initial: 160, street: 200, ev: 400 },
   high: { initial: 400, street: 500, ev: 1200 },
+  ultra: { initial: 1000, street: 1200, ev: 3000 },
 }
 
 /** 対戦モードの完了ラウンド数（0 = 未配置, 1 = 初手済, 2..5 = 各ストリート済）。 */
@@ -996,6 +997,7 @@ export default function App() {
             <option value="fast">{t(lang, 'precisionFast')}</option>
             <option value="standard">{t(lang, 'precisionStandard')}</option>
             <option value="high">{t(lang, 'precisionHigh')}</option>
+            <option value="ultra">{t(lang, 'precisionUltra')}</option>
           </select>
         </label>
         <div className="mode-toggle" role="group">
@@ -1621,8 +1623,33 @@ function SuggestionView({
           {t(lang, 'foulRisk')} {(suggestion.foulProb * 100).toFixed(0)}%
         </span>
       </div>
+      {flTypeBreakdown(suggestion.flBreakdown) && (
+        <div className="sugg-metrics sugg-fl-breakdown">
+          {flTypeBreakdown(suggestion.flBreakdown)!.map(([label, p]) => (
+            <span key={label}>
+              {label} {(p * 100).toFixed(0)}%
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   )
+}
+
+/**
+ * FL 種別内訳の表示行（例: QQ 21% / KK 8% / AA 23% / 3x 3%）。
+ * プログレッシブ FL（15枚以上のキーがある）のときだけ返す。ノーマルでは合計 FL% と同じ
+ * 情報しかないので出さない。
+ */
+const FL_TYPE_LABELS: Record<number, string> = { 14: 'QQ', 15: 'KK', 16: 'AA', 17: '3x' }
+function flTypeBreakdown(bd?: Record<number, number>): [string, number][] | null {
+  if (!bd) return null
+  const entries = Object.entries(bd)
+    .map(([k, v]) => [Number(k), v] as const)
+    .filter(([, v]) => v >= 0.005)
+    .sort((a, b) => a[0] - b[0])
+  if (!entries.some(([k]) => k >= 15)) return null
+  return entries.map(([k, v]) => [FL_TYPE_LABELS[k] ?? `${k}枚`, v])
 }
 
 function vsStatsText(lang: Lang, s: VsPosStats): string {
