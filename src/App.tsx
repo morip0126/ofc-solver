@@ -98,6 +98,7 @@ const PRECISION_ITERS: Record<Precision, { initial: number; street: number; ev: 
   fast: { initial: 60, street: 80, ev: 150 },
   standard: { initial: 160, street: 200, ev: 400 },
   high: { initial: 400, street: 500, ev: 1200 },
+  ultra: { initial: 1000, street: 1200, ev: 3000 },
 }
 
 /** 対戦モードの完了ラウンド数（0 = 未配置, 1 = 初手済, 2..5 = 各ストリート済）。 */
@@ -996,6 +997,7 @@ export default function App() {
             <option value="fast">{t(lang, 'precisionFast')}</option>
             <option value="standard">{t(lang, 'precisionStandard')}</option>
             <option value="high">{t(lang, 'precisionHigh')}</option>
+            <option value="ultra">{t(lang, 'precisionUltra')}</option>
           </select>
         </label>
         <div className="mode-toggle" role="group">

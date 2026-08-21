@@ -811,9 +811,10 @@ export function suggestInitial5(
 
 // ---- 並列評価用のチャンク API --------------------------------------------------
 // Worker プールで候補集合を分割評価するための入口。候補は generateInitialBoards /
-// generateStreetBoards の列挙順 index で指定する。seed を与えると候補 index ごとに
-// 独立の決定論的 PRNG を使うため、どのようにチャンク分割しても全体の結果が一致する
-// （solverParallel.test.ts で担保）。
+// generateStreetBoards の列挙順 index で指定する。seed を与えると全候補が同一の決定論的
+// PRNG 列（＝同じ「未来の引き」のセット）で評価される。共通乱数法により候補間比較の
+// 分散が消え、順位付けが安定する。候補ごとに独立の PRNG を新規生成するため、どのように
+// チャンク分割しても全体の結果が一致する（solverParallel.test.ts で担保）。
 
 export interface CandidateMetric extends BoardMetric {
   /** generateInitialBoards / generateStreetBoards の列挙順 index。 */
@@ -826,9 +827,14 @@ export interface ChunkOptions extends RankOptions {
   onProgress?: (done: number, total: number) => void
 }
 
-/** 候補 index ごとに独立な PRNG（黄金比ハッシュで index を分散し候補間の相関を避ける）。 */
-function candidateRng(seed: number, index: number): () => number {
-  return mulberry32((seed + Math.imul(index + 1, 0x9e3779b9)) >>> 0)
+/**
+ * 候補評価用 PRNG。全候補で同一シード（共通乱数法）: どの候補も同じ「未来の引き」の列で
+ * 採点されるため、候補間の差分から抽選運のノイズが相殺され、少ない反復でも順位が安定する。
+ * （初手候補は同じ5枚を置くので残り山も同一、ストリート候補も引いた3枚が全て山から除かれる
+ * ため残り山が同一になり、シャッフル列を共有すると全候補が完全に同じ未来を見る。）
+ */
+function candidateRng(seed: number, _index: number): () => number {
+  return mulberry32(seed >>> 0)
 }
 
 /** 初手候補（generateInitialBoards の index 指定）のチャンク評価。 */
