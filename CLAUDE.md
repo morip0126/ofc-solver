@@ -33,6 +33,12 @@
 - ソルバー `solver.ts`: `solveBest13`（全探索・決定論的）/ `solveFantasyland`（13〜17枚、リステイ考慮）/
   `estimateEVvsRandom`（`opponents` で複数のランダム相手に対応）/
   `suggestInitial5`・`suggestStreet`（楽観的補完のヒューリスティック、荒→精の2段階MC）。
+- **候補評価の未来モデル** (`evaluateBoard` の `futureModel`): 既定 `'policy'` = トップは Q+ を
+  到着順コミット（投機的FLチェイス、後知恵なし）+ 残りは「各ストリート1枚捨て」制約下の最適配置。
+  `'hindsight'`（捨て制約つき後知恵の到達上限、FL価値は `HINDSIGHT_FL_SCALE` 倍）/
+  `'streets'`（捨てヒューリスティック+最適補完。実プレイ1,200ハンドのA/Bで検証済み）/
+  `'exact'`（旧モデル）。モデル間のEV比較は `futureModelAB.test.ts`。FL種別内訳
+  （QQ/KK/AA/3x）は `BoardMetric.flBreakdown` で UI に表示される。
 - FL 継続率: `flStay.ts` の `stayFeasibility` がリステイ可能性を厳密判定（`solveFantasyland` との
   クロスチェックテストで担保）。継続率の再計測は `FL_STAY_ITERS=500000 pnpm vitest run src/domain/flStayRate.test.ts --testTimeout=3600000`。
 - モンテカルロは決定論的 PRNG（`combinatorics.ts` の `mulberry32`）を注入してテストの再現性を確保する。

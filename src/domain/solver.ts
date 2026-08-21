@@ -797,7 +797,7 @@ export function evaluateBoard(
     foulWeight = DEFAULT_FOUL_WEIGHT,
     completionFlBonus,
     jokers = false,
-    futureModel = 'hindsight',
+    futureModel = 'policy',
   } = options
   // flWeight を明示指定してテーブル省略ならレガシー動作（フラット加点）。それ以外は実測テーブル
   // （デッキに応じて 52枚用 / ジョーカー入り用を選ぶ）。hindsight モデルは参考ソルバーの
@@ -940,15 +940,64 @@ export function evaluateBoard(
       }
     }
     void dropped
-    // 残りカードの捨て札選択は選択制補完に委ねる（上手いプレイヤーの下段運びの近似）。
-    const kept = seenCards.filter((_, i) => !usedTop.has(i))
-    if (topFill.length + kept.length < need) return null
+    // 残りカードは実ルール通り「各ストリートちょうど1枚捨て」の制約下で最適配置する
+    // （トップに2枚コミットした街はその街の残り1枚が強制捨て）。全捨てパターンを列挙し、
+    // それぞれ厳密補完して最良を採る。候補間で意味が揃うよう、トップ充足済みの候補も同じ扱い。
     const tempBoard: Board = {
       top: [...board.top, ...topFill],
       middle: board.middle,
       bottom: board.bottom,
     }
-    return bestCompletionChoose(tempBoard, kept, variant, flValues)
+    const groupsRest: number[][] = []
+    for (let s = 0; s < streets; s++) {
+      const base = s * 3
+      const rest: number[] = []
+      for (let k = base; k < base + 3 && k < seenCards.length; k++) {
+        if (!usedTop.has(k)) rest.push(k)
+      }
+      groupsRest.push(rest)
+    }
+    const extraIdx: number[] = []
+    for (let k = streets * 3; k < seen; k++) extraIdx.push(k)
+
+    let pick: ScoredArrangement | null = null
+    let pickScore = -Infinity
+    const kept: Card[] = []
+    const enumerate = (g: number): void => {
+      if (g === groupsRest.length) {
+        const baseLen = kept.length
+        for (const k of extraIdx) kept.push(seenCards[k])
+        if (topFill.length + kept.length === need) {
+          const r = bestCompletion(tempBoard, kept, variant, completionBonus, flValues)
+          if (r) {
+            const sc = r.evaluated.fouled ? -1000 : r.royalties + flValueOf(r.fantasylandCards)
+            if (sc > pickScore) {
+              pick = r
+              pickScore = sc
+            }
+          }
+        }
+        kept.length = baseLen
+        return
+      }
+      const rest = groupsRest[g]
+      // この街で捨てるのは1枚（トップに2枚コミット済みなら残り全部=1枚が捨て）。
+      const keepCount = Math.max(0, rest.length - 1)
+      if (keepCount === 0) {
+        enumerate(g + 1)
+        return
+      }
+      for (let drop = 0; drop < rest.length; drop++) {
+        const baseLen = kept.length
+        for (let j = 0; j < rest.length; j++) {
+          if (j !== drop) kept.push(seenCards[rest[j]])
+        }
+        enumerate(g + 1)
+        kept.length = baseLen
+      }
+    }
+    enumerate(0)
+    return pick
   }
   /** seen 枚を見てからの最善形: FLゴール経路 + ファウル回避経路 + ヒューリスティック経路の最良。 */
   // 'hindsight' モデル: ストリート捨て制約つき後知恵。各ストリートの3枚から1枚捨てる

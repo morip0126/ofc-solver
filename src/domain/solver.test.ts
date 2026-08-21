@@ -129,19 +129,19 @@ describe('evaluateBoard FL value table selection', () => {
     bottom: parseCards('Kc Kd 9h 9s 7d'),
   }
 
-  it('uses the 52-card table by default (hindsight はスケール適用)', () => {
+  it('uses the 52-card table by default', () => {
     const m = evaluateBoard(board, [], ULTIMATE)
     expect(m.foulProb).toBe(0)
-    expect(m.flEV).toBeCloseTo(DEFAULT_FL_VALUES[14] * HINDSIGHT_FL_SCALE, 6)
+    expect(m.flEV).toBe(DEFAULT_FL_VALUES[14])
   })
 
   it('uses the joker table when jokers=true', () => {
     const m = evaluateBoard(board, [], ULTIMATE, { jokers: true })
-    expect(m.flEV).toBeCloseTo(DEFAULT_FL_VALUES_JOKER[14] * HINDSIGHT_FL_SCALE, 6)
+    expect(m.flEV).toBe(DEFAULT_FL_VALUES_JOKER[14])
   })
 
-  it('streets モデルは実測テーブルをそのまま使う', () => {
-    const m = evaluateBoard(board, [], ULTIMATE, { futureModel: 'streets' })
-    expect(m.flEV).toBe(DEFAULT_FL_VALUES[14])
+  it('hindsight モデルは FL 価値をスケールして使う', () => {
+    const m = evaluateBoard(board, [], ULTIMATE, { futureModel: 'hindsight' })
+    expect(m.flEV).toBeCloseTo(DEFAULT_FL_VALUES[14] * HINDSIGHT_FL_SCALE, 6)
   })
 })
