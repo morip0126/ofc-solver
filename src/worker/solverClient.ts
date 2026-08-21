@@ -267,8 +267,11 @@ export function suggestInitialParallel(
 ): PoolTask<SuggestionDTO[]> {
   const { cards, dead, variantId, jokers, iters, futureModel } = params
   const boards = generateInitialBoards(cards)
-  const coarseIters = Math.max(8, Math.round(iters / 8))
-  const totalUnits = boards.length + REFINE_TOP_K
+  // rollout の精評価は1本あたりが重い分、粗選別を厚くして取りこぼしを防ぐ。
+  const coarseIters =
+    futureModel === 'rollout' ? Math.max(120, Math.round(iters / 2)) : Math.max(8, Math.round(iters / 8))
+  const refineTopK = futureModel === 'rollout' ? 16 : REFINE_TOP_K
+  const totalUnits = boards.length + refineTopK
   const cardCodes = cards.map(cardToString)
   const deadCodes = dead.map(cardToString)
   const seed = hashSeed('initial', cardCodes.join(), deadCodes.join(), variantId, jokers, iters, futureModel ?? '')
@@ -295,16 +298,19 @@ export function suggestInitialParallel(
   })
 
   const run = async (): Promise<SuggestionDTO[]> => {
+    // 粗選別は精評価と選好が揃うモデルで行う（rollout の粗選別に policy を使うと
+    // FLチェイス寄りの候補ばかりが精評価に残り、真の上位を取りこぼす）。
+    const coarseModel = futureModel === 'rollout' ? 'streets' : undefined
     const coarseSpecs = splitIndices(boards.length, solverPool.size).map((indices) => ({
       units: indices.length,
-      req: chunkReq(indices, coarseIters, seed),
+      req: chunkReq(indices, coarseIters, seed, coarseModel),
     }))
     inner = runChunks(coarseSpecs, (d) => onProgress?.(d / totalUnits))
     const coarse = chunkResults(await inner.promise)
     if (canceled) throw new CanceledError()
     coarse.sort((a, b) => b.score - a.score)
 
-    const refineIdx = coarse.slice(0, REFINE_TOP_K).map((c) => c.index)
+    const refineIdx = coarse.slice(0, refineTopK).map((c) => c.index)
     const refineSpecs = splitIndices(refineIdx.length, solverPool.size).map((slice) => ({
       units: slice.length,
       req: chunkReq(slice.map((i) => refineIdx[i]), iters, seed + 1, futureModel),

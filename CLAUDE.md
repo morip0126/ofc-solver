@@ -35,6 +35,9 @@
   `suggestInitial5`・`suggestStreet`（楽観的補完のヒューリスティック、荒→精の2段階MC）。
 - **候補評価の未来モデル** (`evaluateBoard` の `futureModel`): 既定 `'policy'` = トップは Q+ を
   到着順コミット（投機的FLチェイス、後知恵なし）+ 残りは「各ストリート1枚捨て」制約下の最適配置。
+  `'rollout'`（最高品質・最重量 = 精度「解析」）= 固定方針なしの逐次最適プレイ。各ストリートの
+  全合法手を内側MC（候補間共通乱数）で採点して選ぶ。並列2段階では粗選別に `'streets'` を使う
+  （policy だとFLチェイス寄りに偏って真の上位を取りこぼす）。
   `'hindsight'`（捨て制約つき後知恵の到達上限、FL価値は `HINDSIGHT_FL_SCALE` 倍）/
   `'streets'`（捨てヒューリスティック+最適補完。実プレイ1,200ハンドのA/Bで検証済み）/
   `'exact'`（旧モデル）。モデル間のEV比較は `futureModelAB.test.ts`。FL種別内訳
