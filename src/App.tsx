@@ -95,10 +95,17 @@ interface Snapshot {
 
 /** 精度設定ごとのモンテカルロ反復数。Worker プールで並列実行される前提の値。 */
 const PRECISION_ITERS: Record<Precision, { initial: number; street: number; ev: number }> = {
-  fast: { initial: 60, street: 80, ev: 150 },
-  standard: { initial: 160, street: 200, ev: 400 },
-  high: { initial: 400, street: 500, ev: 1200 },
-  ultra: { initial: 1000, street: 1200, ev: 3000 },
+  fast: { initial: 40, street: 60, ev: 150 },
+  standard: { initial: 100, street: 130, ev: 400 },
+  high: { initial: 280, street: 350, ev: 1200 },
+  ultra: { initial: 700, street: 900, ev: 3000 },
+  // 解析: 逐次最適プレイのロールアウト（rollout モデル）。iters はロールアウト本数。
+  deep: { initial: 280, street: 280, ev: 3000 },
+}
+
+/** 精度「解析」では固定方針なしの逐次最適ロールアウトで評価する。 */
+function futureModelFor(precision: Precision): 'rollout' | undefined {
+  return precision === 'deep' ? 'rollout' : undefined
 }
 
 /** 対戦モードの完了ラウンド数（0 = 未配置, 1 = 初手済, 2..5 = 各ストリート済）。 */
@@ -576,11 +583,26 @@ export default function App() {
     const task =
       heroCount === 0
         ? suggestInitialParallel(
-            { cards: pool, dead, variantId, jokers: useJokers, iters: iters.initial },
+            {
+              cards: pool,
+              dead,
+              variantId,
+              jokers: useJokers,
+              iters: iters.initial,
+              futureModel: futureModelFor(precision),
+            },
             setSuggProgress,
           )
         : suggestStreetParallel(
-            { board: hero, drawn: pool, dead, variantId, jokers: useJokers, iters: iters.street },
+            {
+              board: hero,
+              drawn: pool,
+              dead,
+              variantId,
+              jokers: useJokers,
+              iters: iters.street,
+              futureModel: futureModelFor(precision),
+            },
             setSuggProgress,
           )
     suggTask.current = task
@@ -998,6 +1020,7 @@ export default function App() {
             <option value="standard">{t(lang, 'precisionStandard')}</option>
             <option value="high">{t(lang, 'precisionHigh')}</option>
             <option value="ultra">{t(lang, 'precisionUltra')}</option>
+            <option value="deep">{t(lang, 'precisionDeep')}</option>
           </select>
         </label>
         <div className="mode-toggle" role="group">

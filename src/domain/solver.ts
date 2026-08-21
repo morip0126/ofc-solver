@@ -253,6 +253,15 @@ export const DEFAULT_FOUL_WEIGHT = 9.0
  */
 export const HINDSIGHT_FL_SCALE = 2.6
 
+/**
+ * combined（参考互換の複合表示）の較正値。FL率/ロイヤリティは後知恵の到達可能性、
+ * ファウル率は逐次プレイ（到着順コミット）で測り、
+ *   EV = 期待ロイヤリティ + FL価値(実測テーブル×COMBINED_FL_SCALE) − COMBINED_FOUL_WEIGHT×ファウル率
+ * を参考ソルバーのサンプルグリッド（Kd Kh 6d 5h 3h の5セル）へ最小二乗で合わせた。
+ */
+export const COMBINED_FL_SCALE = 2.3
+export const COMBINED_FOUL_WEIGHT = 15
+
 function scaleFlValues(
   base: Readonly<Record<number, number>>,
   scale: number,
@@ -768,17 +777,25 @@ export interface RankOptions {
   jokers?: boolean
   /**
    * 未来のドローのモデル。
-   * 'policy'（既定）: 参考ソルバー互換。トップを QQ+ のために温存して投機的に FL を
-   *   追いかける実戦方針で、後知恵なしに1ストリートずつロールアウトする。コミットの
-   *   失敗（ファウル）も現実的な頻度で織り込まれる。
+   * 'policy'（既定）: トップを QQ+ のために温存して投機的に FL を追いかける固定方針で、
+   *   後知恵なしに1ストリートずつロールアウトする軽量近似。コミットの失敗（ファウル）も
+   *   現実的な頻度で織り込まれる。
+   * 'rollout': 逐次最適プレイのロールアウト（最重量・最高品質）。各ストリートで
+   *   「3枚から2枚置き1枚捨て」の全合法手を内側モンテカルロで採点し、固定方針なしに
+   *   その都度最良の手を選んでプレイし切る。トップに置くかどうかも毎回 EV で判断される。
+   *   反復1回あたり内側評価が走るため計算コストは policy の数十倍（精度「解析」用）。
    * 'hindsight': 残りストリートで見える全カードを見てから最適に置けたと仮定する後知恵
    *   評価（理想プレイの上限。ファウルは「どう置いても避けられない」場合のみ）。
    * 'streets': 見えるカードから各ストリートで限界価値最低の1枚を捨てたと仮定し、残りを
    *   最適補完するハイブリッド。
    * 'exact': 残りマス数ちょうどを引く旧モデル（選択の自由を無視。回帰検証用）。
    */
-  futureModel?: 'policy' | 'hindsight' | 'streets' | 'exact'
+  futureModel?: FutureModel
+  /** 'rollout' の各ストリート手選択に使う内側モンテカルロの反復数（既定 6）。 */
+  rolloutInner?: number
 }
+
+export type FutureModel = 'combined' | 'policy' | 'rollout' | 'hindsight' | 'streets' | 'exact'
 
 /**
  * 部分盤面の価値を、楽観的補完（残りは最適に置ける前提）のモンテカルロで推定する。
@@ -794,21 +811,25 @@ export function evaluateBoard(
     iters = 100,
     rng = Math.random,
     flWeight,
-    foulWeight = DEFAULT_FOUL_WEIGHT,
     completionFlBonus,
     jokers = false,
-    futureModel = 'policy',
+    futureModel = 'combined',
   } = options
+  const foulWeight =
+    options.foulWeight ??
+    (futureModel === 'combined' ? COMBINED_FOUL_WEIGHT : DEFAULT_FOUL_WEIGHT)
   // flWeight を明示指定してテーブル省略ならレガシー動作（フラット加点）。それ以外は実測テーブル
-  // （デッキに応じて 52枚用 / ジョーカー入り用を選ぶ）。hindsight モデルは参考ソルバーの
-  // FL 重視の価値付けに合わせてスケールする（HINDSIGHT_FL_SCALE 参照）。
+  // （デッキに応じて 52枚用 / ジョーカー入り用を選ぶ）。hindsight / combined モデルは
+  // 参考ソルバーの FL 重視の価値付けに合わせてスケールする。
   const baseFlValues =
     flWeight !== undefined ? undefined : jokers ? DEFAULT_FL_VALUES_JOKER : DEFAULT_FL_VALUES
   const flValues =
     options.flValues ??
     (baseFlValues && futureModel === 'hindsight'
       ? scaleFlValues(baseFlValues, HINDSIGHT_FL_SCALE)
-      : baseFlValues)
+      : baseFlValues && futureModel === 'combined'
+        ? scaleFlValues(baseFlValues, COMBINED_FL_SCALE)
+        : baseFlValues)
   const flFlat = flWeight ?? 6
   const flValueOf = (flCards: number): number =>
     flCards > 0 ? (flValues ? (flValues[flCards] ?? 0) : flFlat) : 0
@@ -883,6 +904,8 @@ export function evaluateBoard(
   const cap = remainingCap(board)
   const topPlacedRank = new Array<number>(16).fill(0)
   for (const c of board.top) topPlacedRank[c.rank]++
+  // トップに既に QQ+ のペアが確定しているか（combined でのアーム選択に使う）
+  const topLockedFL = topPlacedRank.some((n, r) => r >= 12 && n >= 2)
 
   /**
    * 'policy' モデル（参考ソルバー互換）: トップは「到着順コミット」——各ストリートで
@@ -923,8 +946,11 @@ export function evaluateBoard(
         topRoom--
         placedTop++
       }
-      // ペア/トリップス完成（Q+）→ 単騎（高い順、最後の1枠はペアの相方用に温存）→
+      // ペア完成（Q+）→ 単騎（高い順、最後の1枠はペアの相方用に温存）→
       // 単騎で新たにペアが可能になった場合の完成、の順で確保する。
+      // トリップス化（3枚目）は第1ストリートのみ（下段を組み立てる時間が残る場合だけ）。
+      // 単騎の投機は最終ストリートではしない（相方を引く機会が残っていないため）。
+      const lastStreet = s === streets - 1
       const byRank = [...group].sort((a, b) => seenCards[b].rank - seenCards[a].rank)
       for (let pass = 0; pass < 3; pass++) {
         for (const k of byRank) {
@@ -932,8 +958,8 @@ export function evaluateBoard(
           const c = seenCards[k]
           if (usedTop.has(k) || isJoker(c) || c.rank < 12) continue
           if (pass === 1) {
-            if (topRoom >= 2 && topCnt[c.rank] === 0) commit(k)
-          } else if (topCnt[c.rank] >= 1) {
+            if (!lastStreet && topRoom >= 2 && topCnt[c.rank] === 0) commit(k)
+          } else if (topCnt[c.rank] === 1 || (topCnt[c.rank] === 2 && s < 1)) {
             commit(k)
           }
         }
@@ -1003,26 +1029,40 @@ export function evaluateBoard(
   // 'hindsight' モデル: ストリート捨て制約つき後知恵。各ストリートの3枚から1枚捨てる
   // 全パターン（3^streets ≤ 81）を列挙し、それぞれ残りを厳密補完して最良を採る。
   // 「見えるカードをどう使ってもファウルを避けられない」場合だけファウルになる。
-  const discardPatterns: number[][] = []
-  if (streets > 0) {
-    const pat: number[] = new Array(streets).fill(0)
-    const gen = (g: number): void => {
-      if (g === streets) {
-        discardPatterns.push([...pat])
-        return
-      }
-      for (let d = 0; d < 3; d++) {
-        pat[g] = d
-        gen(g + 1)
-      }
-    }
-    gen(0)
-  }
   const keptBuf: Card[] = new Array(need)
+  // 各ストリートの捨て候補（全列挙）。枝刈り（下位2枚のみ）はFL到達を4pt程度取り
+  // こぼすことが計測で分かったため行わない。
+  const allowedDrops: number[][] = Array.from({ length: streets }, () => [])
+  const buildAllowedDrops = (): void => {
+    rankCount.fill(0)
+    suitCount.c = suitCount.d = suitCount.h = suitCount.s = 0
+    for (const c of placed) {
+      rankCount[c.rank]++
+      if (!isJoker(c)) suitCount[c.suit]++
+    }
+    for (let k = 0; k < seen; k++) {
+      const c = deck[k]
+      rankCount[c.rank]++
+      if (!isJoker(c)) suitCount[c.suit]++
+    }
+    for (let s = 0; s < streets; s++) {
+      allowedDrops[s].length = 0
+      for (let k = 0; k < 3; k++) allowedDrops[s].push(k)
+    }
+  }
   const hindsightBest = (): ScoredArrangement | null => {
+    buildAllowedDrops()
     let pick: ScoredArrangement | null = null
     let pickScore = -Infinity
-    for (const pat of discardPatterns) {
+    const pat: number[] = new Array(streets).fill(0)
+    const walk = (g: number): void => {
+      if (g < streets) {
+        for (const d of allowedDrops[g]) {
+          pat[g] = d
+          walk(g + 1)
+        }
+        return
+      }
       let ki = 0
       for (let s = 0; s < streets; s++) {
         const base = s * 3
@@ -1032,14 +1072,72 @@ export function evaluateBoard(
       }
       for (let k = 0; k < extra; k++) keptBuf[ki++] = deck[streets * 3 + k]
       const r = bestCompletion(board, keptBuf, variant, completionBonus, flValues)
-      if (!r) continue
+      if (!r) return
       const sc = r.evaluated.fouled ? -1000 : r.royalties + flValueOf(r.fantasylandCards)
       if (sc > pickScore) {
         pick = r
         pickScore = sc
       }
     }
+    walk(0)
     return pick
+  }
+
+  /**
+   * 'rollout' モデル: 逐次最適プレイのロールアウト。deck（シャッフル済み）の先頭から
+   * 3枚ずつ引き、各ストリートで全合法手（2枚置き1枚捨て）を内側モンテカルロ
+   * （futureModel:'streets'、軽量）で採点して最良を選ぶ。固定方針なし・後知恵なし。
+   */
+  const rolloutInner = options.rolloutInner ?? 16
+  const rolloutBest = (): ScoredArrangement | null => {
+    const cur: Board = { top: [...board.top], middle: [...board.middle], bottom: [...board.bottom] }
+    const curDead: Card[] = [...dead]
+    let pos = 0
+    let remaining = need
+    while (remaining >= 2 && deck.length - pos >= 3) {
+      const drawn = [deck[pos], deck[pos + 1], deck[pos + 2]]
+      pos += 3
+      const cands = generateStreetBoards(cur, drawn)
+      let bestIdx = -1
+      let bestScore = -Infinity
+      // 共通乱数法: この手選択では全候補に同じ「未来の引き」を見せる（比較ノイズを相殺）。
+      const stSeed = (rng() * 0x100000000) >>> 0
+      for (let ci = 0; ci < cands.length; ci++) {
+        const m = evaluateBoard(cands[ci].board, [...curDead, cands[ci].discarded], variant, {
+          iters: rolloutInner,
+          rng: mulberry32(stSeed),
+          flValues,
+          foulWeight,
+          jokers,
+          futureModel: 'streets',
+        })
+        if (m.score > bestScore) {
+          bestScore = m.score
+          bestIdx = ci
+        }
+      }
+      if (bestIdx < 0) return null
+      const chosen = cands[bestIdx]
+      cur.top = chosen.board.top
+      cur.middle = chosen.board.middle
+      cur.bottom = chosen.board.bottom
+      curDead.push(chosen.discarded)
+      remaining -= 2
+    }
+    if (remaining > 0) {
+      // 端数（変則盤面の保険）: 残りマスちょうど引いて最適補完
+      if (deck.length - pos < remaining) return null
+      const r = bestCompletion(cur, deck.slice(pos, pos + remaining), variant, completionBonus, flValues)
+      return r
+    }
+    const arrangement = cur as Arrangement
+    const evaluated = evaluateArrangement(arrangement)
+    return {
+      arrangement,
+      evaluated,
+      royalties: royaltiesTotal(evaluated),
+      fantasylandCards: fantasylandCards(evaluated, variant),
+    }
   }
 
   let royaltySum = 0
@@ -1052,7 +1150,55 @@ export function evaluateBoard(
   for (let i = 0; i < iters; i++) {
     shuffle(deck, rng)
     let best: ScoredArrangement | null
-    if (futureModel === 'policy' && streets > 0 && deck.length >= seen) {
+    if (futureModel === 'combined' && streets > 0 && deck.length >= seen) {
+      // 複合表示: FL/ロイヤリティは後知恵の到達可能性、ファウルは逐次プレイ（到着順
+      // コミット）で測る。参考ソルバーの表示と同じ構成。ただしトップが既に QQ+ で
+      // 確定している盤面は「到達」が自明で後知恵が過大になるため、全統計を逐次側から取る。
+      if (topLockedFL && cap.top === 0) {
+        // トップ完成済み: FL は「非ファウルなら確定」。下段の運びは最適（捨てパターン全列挙）
+        // と素朴（ヒューリスティック捨て1本）の 50/50 混合で、中位のプレイヤー品質を模す。
+        const a = policyCommitBest()
+        future.length = 0
+        buildStreetFuture(future)
+        const b = bestCompletion(board, future, variant, completionBonus, flValues)
+        if (!a || !b) continue
+        n++
+        for (const [r, wgt] of [
+          [a, 0.5],
+          [b, 0.5],
+        ] as const) {
+          if (r.evaluated.fouled) {
+            foulCount += wgt
+          } else {
+            royaltySum += r.royalties * wgt
+            if (r.fantasylandCards > 0) {
+              flCount += wgt
+              flValueSum += flValueOf(r.fantasylandCards) * wgt
+              flCounts[r.fantasylandCards] = (flCounts[r.fantasylandCards] ?? 0) + wgt
+            }
+          }
+        }
+        continue
+      }
+      const pol = policyCommitBest()
+      if (!pol) continue
+      const src = topLockedFL ? pol : hindsightBest()
+      if (!src) continue
+      n++
+      if (pol.evaluated.fouled) foulCount++
+      if (!src.evaluated.fouled) {
+        royaltySum += src.royalties
+        if (src.fantasylandCards > 0) {
+          flCount++
+          flValueSum += flValueOf(src.fantasylandCards)
+          flCounts[src.fantasylandCards] = (flCounts[src.fantasylandCards] ?? 0) + 1
+        }
+      }
+      continue
+    }
+    if (futureModel === 'rollout' && need >= 2 && deck.length >= need + Math.floor(need / 2)) {
+      best = rolloutBest()
+    } else if (futureModel === 'policy' && streets > 0 && deck.length >= seen) {
       best = policyCommitBest()
     } else if (futureModel === 'hindsight' && streets > 0 && deck.length >= seen) {
       best = hindsightBest()

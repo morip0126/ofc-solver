@@ -13,7 +13,7 @@ import {
   parseCards,
 } from './domain'
 
-export type Precision = 'fast' | 'standard' | 'high' | 'ultra'
+export type Precision = 'fast' | 'standard' | 'high' | 'ultra' | 'deep'
 
 export interface PersistedSettings {
   lang: 'ja' | 'en'
@@ -170,7 +170,7 @@ export function loadSettings(): Partial<PersistedSettings> {
   const mode = oneOf(o.mode, ['play', 'fl', 'vs'] as const)
   if (mode) out.mode = mode
   if (typeof o.useJokers === 'boolean') out.useJokers = o.useJokers
-  const precision = oneOf(o.precision, ['fast', 'standard', 'high', 'ultra'] as const)
+  const precision = oneOf(o.precision, ['fast', 'standard', 'high', 'ultra', 'deep'] as const)
   if (precision) out.precision = precision
   return out
 }

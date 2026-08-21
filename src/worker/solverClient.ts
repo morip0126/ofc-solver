@@ -11,6 +11,7 @@ import {
   type Board,
   type BoardMetric,
   type Card,
+  type FutureModel,
   type VariantId,
   cardToString,
   choose,
@@ -252,6 +253,8 @@ export interface SuggestInitialParams {
   variantId: VariantId
   jokers: boolean
   iters: number
+  /** 精評価段に使う未来モデル（省略時は evaluateBoard の既定 'policy'）。 */
+  futureModel?: FutureModel
 }
 
 /**
@@ -262,18 +265,26 @@ export function suggestInitialParallel(
   params: SuggestInitialParams,
   onProgress?: (frac: number) => void,
 ): PoolTask<SuggestionDTO[]> {
-  const { cards, dead, variantId, jokers, iters } = params
+  const { cards, dead, variantId, jokers, iters, futureModel } = params
   const boards = generateInitialBoards(cards)
-  const coarseIters = Math.max(8, Math.round(iters / 8))
-  const totalUnits = boards.length + REFINE_TOP_K
+  // rollout の精評価は1本あたりが重い分、粗選別を厚くして取りこぼしを防ぐ。
+  const coarseIters =
+    futureModel === 'rollout' ? Math.max(120, Math.round(iters / 2)) : Math.max(8, Math.round(iters / 8))
+  const refineTopK = futureModel === 'rollout' ? 16 : REFINE_TOP_K
+  const totalUnits = boards.length + refineTopK
   const cardCodes = cards.map(cardToString)
   const deadCodes = dead.map(cardToString)
-  const seed = hashSeed('initial', cardCodes.join(), deadCodes.join(), variantId, jokers, iters)
+  const seed = hashSeed('initial', cardCodes.join(), deadCodes.join(), variantId, jokers, iters, futureModel ?? '')
 
   let canceled = false
   let inner: PoolTask<WorkerResponse[]> | null = null
 
-  const chunkReq = (indices: number[], chunkIters: number, chunkSeed: number): WorkerRequest => ({
+  const chunkReq = (
+    indices: number[],
+    chunkIters: number,
+    chunkSeed: number,
+    model?: FutureModel,
+  ): WorkerRequest => ({
     id: 0,
     kind: 'evalInitialChunk',
     cards: cardCodes,
@@ -283,22 +294,26 @@ export function suggestInitialParallel(
     indices,
     iters: chunkIters,
     seed: chunkSeed,
+    futureModel: model,
   })
 
   const run = async (): Promise<SuggestionDTO[]> => {
+    // 粗選別は精評価と選好が揃うモデルで行う（rollout の粗選別に policy を使うと
+    // FLチェイス寄りの候補ばかりが精評価に残り、真の上位を取りこぼす）。
+    const coarseModel = futureModel === 'rollout' ? 'streets' : undefined
     const coarseSpecs = splitIndices(boards.length, solverPool.size).map((indices) => ({
       units: indices.length,
-      req: chunkReq(indices, coarseIters, seed),
+      req: chunkReq(indices, coarseIters, seed, coarseModel),
     }))
     inner = runChunks(coarseSpecs, (d) => onProgress?.(d / totalUnits))
     const coarse = chunkResults(await inner.promise)
     if (canceled) throw new CanceledError()
     coarse.sort((a, b) => b.score - a.score)
 
-    const refineIdx = coarse.slice(0, REFINE_TOP_K).map((c) => c.index)
+    const refineIdx = coarse.slice(0, refineTopK).map((c) => c.index)
     const refineSpecs = splitIndices(refineIdx.length, solverPool.size).map((slice) => ({
       units: slice.length,
-      req: chunkReq(slice.map((i) => refineIdx[i]), iters, seed + 1),
+      req: chunkReq(slice.map((i) => refineIdx[i]), iters, seed + 1, futureModel),
     }))
     inner = runChunks(refineSpecs, (d) => onProgress?.((boards.length + d) / totalUnits))
     const refined = chunkResults(await inner.promise)
@@ -330,6 +345,7 @@ export interface SuggestStreetParams {
   variantId: VariantId
   jokers: boolean
   iters: number
+  futureModel?: FutureModel
 }
 
 /** ストリート手の推奨（候補をプール全体へ分割評価）。 */
@@ -337,7 +353,7 @@ export function suggestStreetParallel(
   params: SuggestStreetParams,
   onProgress?: (frac: number) => void,
 ): PoolTask<SuggestionDTO[]> {
-  const { board, drawn, dead, variantId, jokers, iters } = params
+  const { board, drawn, dead, variantId, jokers, iters, futureModel } = params
   const candidates = generateStreetBoards(board, drawn)
   const dto = boardDTO(board)
   const drawnCodes = drawn.map(cardToString)
@@ -352,6 +368,7 @@ export function suggestStreetParallel(
     variantId,
     jokers,
     iters,
+    futureModel ?? '',
   )
 
   const specs = splitIndices(candidates.length, solverPool.size).map((indices) => ({
@@ -367,6 +384,7 @@ export function suggestStreetParallel(
       indices,
       iters,
       seed,
+      futureModel,
     } satisfies WorkerRequest,
   }))
   const inner = runChunks(specs, (d, t) => onProgress?.(t > 0 ? d / t : 0))
