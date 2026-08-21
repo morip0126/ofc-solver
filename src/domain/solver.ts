@@ -254,13 +254,16 @@ export const DEFAULT_FOUL_WEIGHT = 9.0
 export const HINDSIGHT_FL_SCALE = 2.6
 
 /**
- * combined（参考互換の複合表示）の較正値。FL率/ロイヤリティは後知恵の到達可能性、
- * ファウル率は逐次プレイ（到着順コミット）で測り、
- *   EV = 期待ロイヤリティ + FL価値(実測テーブル×COMBINED_FL_SCALE) − COMBINED_FOUL_WEIGHT×ファウル率
- * を参考ソルバーのサンプルグリッド（Kd Kh 6d 5h 3h の5セル）へ最小二乗で合わせた。
+ * combined（既定の複合表示）の較正値。全統計を逐次プレイ（到着順コミット + 下段最適、
+ * トップ確定型は品質ブレンド）で測り、
+ *   EV = 期待ロイヤリティ + FL価値 − COMBINED_FOUL_WEIGHT×ファウル率
+ * とする。FL価値はジョーカー入り（54枚）のときのみ COMBINED_FL_SCALE 倍
+ * （参考ソルバーのジョーカー用グリッド Kd Kh 6d 5h 3h に合わせた較正。参考ソルバーは
+ * 54枚デッキの逐次シミュレーションであることが FL 内訳の一致（KK 7.8% 等）で判明している）。
+ * 52枚デッキは実測テーブルをそのまま使う（正直な期待値表示）。
  */
-export const COMBINED_FL_SCALE = 2.3
-export const COMBINED_FOUL_WEIGHT = 15
+export const COMBINED_FL_SCALE = 1.5
+export const COMBINED_FOUL_WEIGHT = 9
 
 function scaleFlValues(
   base: Readonly<Record<number, number>>,
@@ -827,7 +830,7 @@ export function evaluateBoard(
     options.flValues ??
     (baseFlValues && futureModel === 'hindsight'
       ? scaleFlValues(baseFlValues, HINDSIGHT_FL_SCALE)
-      : baseFlValues && futureModel === 'combined'
+      : baseFlValues && futureModel === 'combined' && jokers
         ? scaleFlValues(baseFlValues, COMBINED_FL_SCALE)
         : baseFlValues)
   const flFlat = flWeight ?? 6
@@ -1194,16 +1197,14 @@ export function evaluateBoard(
       }
       const pol = policyCommitBest()
       if (!pol) continue
-      const src = hindsightBest()
-      if (!src) continue
       n++
       if (pol.evaluated.fouled) foulCount++
-      if (!src.evaluated.fouled) {
-        royaltySum += src.royalties
-        if (src.fantasylandCards > 0) {
+      else {
+        royaltySum += pol.royalties
+        if (pol.fantasylandCards > 0) {
           flCount++
-          flValueSum += flValueOf(src.fantasylandCards)
-          flCounts[src.fantasylandCards] = (flCounts[src.fantasylandCards] ?? 0) + 1
+          flValueSum += flValueOf(pol.fantasylandCards)
+          flCounts[pol.fantasylandCards] = (flCounts[pol.fantasylandCards] ?? 0) + 1
         }
       }
       continue
