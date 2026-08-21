@@ -18,7 +18,6 @@ import { mulberry32, shuffle } from './combinatorics'
 import { type Arrangement, type EvaluatedArrangement, evaluateArrangement, scoreEvaluated } from './score'
 import {
   type Board,
-  DEFAULT_STAY_BONUS,
   solveBest13,
   solveFantasyland,
   suggestInitial5,
@@ -142,7 +141,7 @@ function fmt(s: Stat): string {
   return `${s.mean.toFixed(2)} ±${s.se.toFixed(2)} (n=${s.n})`
 }
 
-function runDeck(jokers: boolean, stayBonus: number): void {
+function runDeck(jokers: boolean): void {
   const label = jokers ? '54枚+ジョーカー2' : '52枚'
   const pStay = P_STAY[jokers ? '54' : '52']
   const t0 = Date.now()
@@ -159,7 +158,8 @@ function runDeck(jokers: boolean, stayBonus: number): void {
   }
   for (let n = 14; n <= 17; n++) {
     const t = Date.now()
-    sfl[n] = measureSFL(n, jokers, SFL_HANDS[n], stayBonus, (jokers ? 0x54f0 : 0x52f0) + n)
+    // リステイボーナス = V(現在の枚数)（同枚数維持ルール。現行テーブルの値で自己整合をとる）
+    sfl[n] = measureSFL(n, jokers, SFL_HANDS[n], stayBonusFor(n, jokers), (jokers ? 0x54f0 : 0x52f0) + n)
     console.log(
       `[${label}] S_FL(${n}) = ${fmt(sfl[n])} stay=${(100 * sfl[n].stayRate).toFixed(1)}% ` +
         `(${Math.round((Date.now() - t) / 1000)}s)`,
@@ -174,17 +174,17 @@ function runDeck(jokers: boolean, stayBonus: number): void {
   )
   const v = (n: number) => delta[n] / (1 - pStay[n])
   console.log(
-    `[${label}] V={14:${v(14).toFixed(1)}, 15:${v(15).toFixed(1)}, 16:${v(16).toFixed(1)}, 17:${v(17).toFixed(1)}} (stayBonus=${stayBonus}で計測)`,
+    `[${label}] V={14:${v(14).toFixed(1)}, 15:${v(15).toFixed(1)}, 16:${v(16).toFixed(1)}, 17:${v(17).toFixed(1)}} (stayBonus=V(n)で計測)`,
   )
 }
 
 describe('FL value measurement (set FL_VALUE_HANDS to run)', () => {
   it.skipIf(HANDS <= 0)('52-card deck (methodology check vs documented values)', () => {
-    runDeck(false, DEFAULT_STAY_BONUS)
+    runDeck(false)
   }, 7_200_000)
 
   it.skipIf(HANDS <= 0)('54-card joker deck', () => {
-    runDeck(true, 20)
+    runDeck(true)
   }, 7_200_000)
 
   it.skipIf(SN_HANDS <= 0)('54-card joker deck: S_N re-measurement (iteration check)', () => {
