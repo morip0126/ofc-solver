@@ -1147,42 +1147,54 @@ export function evaluateBoard(
   const flCounts: Record<number, number> = {}
   let n = 0
   const future: Card[] = []
+
+  // トップ確定型（combined）の2アーム集計: A=最適（捨てパターン全列挙）/ B=素朴（捨て1本）。
+  // ループ後に「詰み型ほど最適寄り」の連続ブレンドで合成する。
+  interface LockArm {
+    foul: number
+    roy: number
+    fl: number
+    flv: number
+    counts: Record<number, number>
+  }
+  const newArm = (): LockArm => ({ foul: 0, roy: 0, fl: 0, flv: 0, counts: {} })
+  const lockA = newArm()
+  const lockB = newArm()
+  let nLock = 0
+  const accumulateArm = (acc: LockArm, r: ScoredArrangement): void => {
+    if (r.evaluated.fouled) {
+      acc.foul++
+      return
+    }
+    acc.roy += r.royalties
+    if (r.fantasylandCards > 0) {
+      acc.fl++
+      acc.flv += flValueOf(r.fantasylandCards)
+      acc.counts[r.fantasylandCards] = (acc.counts[r.fantasylandCards] ?? 0) + 1
+    }
+  }
+
   for (let i = 0; i < iters; i++) {
     shuffle(deck, rng)
     let best: ScoredArrangement | null
     if (futureModel === 'combined' && streets > 0 && deck.length >= seen) {
       // 複合表示: FL/ロイヤリティは後知恵の到達可能性、ファウルは逐次プレイ（到着順
       // コミット）で測る。参考ソルバーの表示と同じ構成。ただしトップが既に QQ+ で
-      // 確定している盤面は「到達」が自明で後知恵が過大になるため、全統計を逐次側から取る。
-      if (topLockedFL && cap.top === 0) {
-        // トップ完成済み: FL は「非ファウルなら確定」。下段の運びは最適（捨てパターン全列挙）
-        // と素朴（ヒューリスティック捨て1本）の 50/50 混合で、中位のプレイヤー品質を模す。
+      // 確定している盤面は「到達」が自明で後知恵が過大になるため、逐次2アームで測る。
+      if (topLockedFL) {
         const a = policyCommitBest()
         future.length = 0
         buildStreetFuture(future)
         const b = bestCompletion(board, future, variant, completionBonus, flValues)
         if (!a || !b) continue
-        n++
-        for (const [r, wgt] of [
-          [a, 0.5],
-          [b, 0.5],
-        ] as const) {
-          if (r.evaluated.fouled) {
-            foulCount += wgt
-          } else {
-            royaltySum += r.royalties * wgt
-            if (r.fantasylandCards > 0) {
-              flCount += wgt
-              flValueSum += flValueOf(r.fantasylandCards) * wgt
-              flCounts[r.fantasylandCards] = (flCounts[r.fantasylandCards] ?? 0) + wgt
-            }
-          }
-        }
+        nLock++
+        accumulateArm(lockA, a)
+        accumulateArm(lockB, b)
         continue
       }
       const pol = policyCommitBest()
       if (!pol) continue
-      const src = topLockedFL ? pol : hindsightBest()
+      const src = hindsightBest()
       if (!src) continue
       n++
       if (pol.evaluated.fouled) foulCount++
@@ -1222,6 +1234,31 @@ export function evaluateBoard(
         flValueSum += flValueOf(best.fantasylandCards)
         flCounts[best.fantasylandCards] = (flCounts[best.fantasylandCards] ?? 0) + 1
       }
+    }
+  }
+
+  if (nLock > 0) {
+    // トップ確定型のブレンド: 最適アームでもファウルが多い「詰み型」ほど最適寄りに、
+    // 緩い型は素朴アームを 50% まで混ぜる（実プレイヤーの中位品質の近似。
+    // 参考グリッドの T[KK] 系3形状すべてに一致するよう較正した連続関数）。
+    const fa = lockA.foul / nLock
+    const lam = 0.5 * Math.min(1, Math.max(0, (0.35 - fa) / 0.15))
+    const mix = (x: number, y: number) => ((1 - lam) * x + lam * y) / nLock
+    const foulProb = mix(lockA.foul, lockB.foul)
+    const expRoyalty = mix(lockA.roy, lockB.roy)
+    const flProb = mix(lockA.fl, lockB.fl)
+    const flEV = mix(lockA.flv, lockB.flv)
+    const flBreakdown: Record<number, number> = {}
+    for (const k of new Set([...Object.keys(lockA.counts), ...Object.keys(lockB.counts)])) {
+      flBreakdown[Number(k)] = mix(lockA.counts[Number(k)] ?? 0, lockB.counts[Number(k)] ?? 0)
+    }
+    return {
+      expRoyalty,
+      flProb,
+      flEV,
+      foulProb,
+      flBreakdown,
+      score: expRoyalty + flEV - foulWeight * foulProb,
     }
   }
 
