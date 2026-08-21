@@ -14,7 +14,7 @@
 // ホットパスは fastEval.ts の 24bit パックキーで動く（アロケーション回避・整数比較）。
 // 正しさは solver.test.ts の参照実装（combinations + evaluateArrangement）とのクロスチェックで担保。
 
-import { type Card, remainingDeck, without } from './cards'
+import { type Card, isJoker, remainingDeck, without } from './cards'
 import { combinations, mulberry32, shuffle } from './combinatorics'
 import {
   key3,
@@ -615,6 +615,8 @@ export interface BoardMetric {
   /** FL 突入の期待価値（サンプルごとの V(FL枚数) の平均）。 */
   flEV: number
   foulProb: number
+  /** FL 枚数別の突入率（例: ULTIMATE では 14=QQ, 15=KK, 16=AA, 17=トリップス）。 */
+  flBreakdown: Record<number, number>
   /** 総合スコア = 期待ロイヤリティ + FL期待価値 - foulWeight*ファウル率。 */
   score: number
 }
@@ -635,6 +637,14 @@ export interface RankOptions {
   completionFlBonus?: number
   /** ジョーカー2枚入り（54枚デッキ）でプレイしているか。 */
   jokers?: boolean
+  /**
+   * 未来のドローのモデル。
+   * 'streets'（既定）: 実ルール通り「1ストリートに3枚引いて2枚置き1枚捨てる」を反映し、
+   *   各ストリートで限界価値が最も低い1枚を捨てたと仮定してサンプルする。
+   * 'exact': 残りマス数ちょうどを引く旧モデル。捨て札で選べる自由を無視するため
+   *   FL 率・期待値を系統的に過小評価する（比較・回帰検証用に残置）。
+   */
+  futureModel?: 'streets' | 'exact'
 }
 
 /**
@@ -654,6 +664,7 @@ export function evaluateBoard(
     foulWeight = DEFAULT_FOUL_WEIGHT,
     completionFlBonus,
     jokers = false,
+    futureModel = 'streets',
   } = options
   // flWeight を明示指定してテーブル省略ならレガシー動作（フラット加点）。それ以外は実測テーブル
   // （デッキに応じて 52枚用 / ジョーカー入り用を選ぶ）。
@@ -680,19 +691,66 @@ export function evaluateBoard(
       flProb: flCards > 0 ? 1 : 0,
       flEV,
       foulProb,
+      flBreakdown: flCards > 0 ? { [flCards]: 1 } : {},
       score: expRoyalty + flEV - foulWeight * foulProb,
     }
   }
 
   const deck = remainingDeck([...placed, ...dead], jokers)
+  // 'streets' モデル: 残り need マスは実プレイでは need/2 ストリートで埋まり、各ストリートで
+  // 3枚引いて1枚捨てられる。つまり見えるカードは need より多く、その選択の自由が
+  // FL 率とロイヤリティを押し上げる。各ストリートの捨て札は「限界価値が最低の1枚」で近似する。
+  const streets = futureModel === 'streets' ? Math.floor(need / 2) : 0
+  const extra = need - streets * 2
+  const seen = streets * 3 + extra
+  const rankCount = new Array<number>(16).fill(0)
+  const suitCount: Record<string, number> = { c: 0, d: 0, h: 0, s: 0 }
+  // 限界価値: ジョーカーは常にキープ。ペア形成 > ランク > フラッシュ素材の順で重み付け。
+  const dropScore = (c: Card): number => {
+    if (isJoker(c)) return 1000
+    return c.rank + 8 * (rankCount[c.rank] - 1) + (suitCount[c.suit] >= 5 ? 3 : 0)
+  }
+
   let royaltySum = 0
   let flCount = 0
   let flValueSum = 0
   let foulCount = 0
+  const flCounts: Record<number, number> = {}
   let n = 0
+  const future: Card[] = []
   for (let i = 0; i < iters; i++) {
     shuffle(deck, rng)
-    const future = deck.slice(0, need)
+    future.length = 0
+    if (streets > 0 && deck.length >= seen) {
+      // 盤面 + このイテレーションで見える全カードを文脈に、ストリートごとに最低価値の1枚を捨てる。
+      rankCount.fill(0)
+      suitCount.c = suitCount.d = suitCount.h = suitCount.s = 0
+      for (const c of placed) {
+        rankCount[c.rank]++
+        if (!isJoker(c)) suitCount[c.suit]++
+      }
+      for (let k = 0; k < seen; k++) {
+        const c = deck[k]
+        rankCount[c.rank]++
+        if (!isJoker(c)) suitCount[c.suit]++
+      }
+      let pos = 0
+      for (let s = 0; s < streets; s++) {
+        const a = deck[pos]
+        const b = deck[pos + 1]
+        const c = deck[pos + 2]
+        pos += 3
+        const da = dropScore(a)
+        const db = dropScore(b)
+        const dc = dropScore(c)
+        if (da <= db && da <= dc) future.push(b, c)
+        else if (db <= dc) future.push(a, c)
+        else future.push(a, b)
+      }
+      for (let k = 0; k < extra; k++) future.push(deck[pos + k])
+    } else {
+      for (let k = 0; k < need; k++) future.push(deck[k])
+    }
     const best = bestCompletion(board, future, variant, completionBonus, flValues)
     if (!best) continue
     n++
@@ -703,6 +761,7 @@ export function evaluateBoard(
       if (best.fantasylandCards > 0) {
         flCount++
         flValueSum += flValueOf(best.fantasylandCards)
+        flCounts[best.fantasylandCards] = (flCounts[best.fantasylandCards] ?? 0) + 1
       }
     }
   }
@@ -711,7 +770,16 @@ export function evaluateBoard(
   const flProb = n > 0 ? flCount / n : 0
   const flEV = n > 0 ? flValueSum / n : 0
   const foulProb = n > 0 ? foulCount / n : 0
-  return { expRoyalty, flProb, flEV, foulProb, score: expRoyalty + flEV - foulWeight * foulProb }
+  const flBreakdown: Record<number, number> = {}
+  if (n > 0) for (const [k, v] of Object.entries(flCounts)) flBreakdown[Number(k)] = v / n
+  return {
+    expRoyalty,
+    flProb,
+    flEV,
+    foulProb,
+    flBreakdown,
+    score: expRoyalty + flEV - foulWeight * foulProb,
+  }
 }
 
 export interface BoardSuggestion extends BoardMetric {

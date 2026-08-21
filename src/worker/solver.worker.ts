@@ -31,6 +31,8 @@ export interface SuggestionDTO extends BoardDTO {
   expRoyalty: number
   flProb: number
   foulProb: number
+  /** FL 枚数別の突入率（ULTIMATE では 14=QQ, 15=KK, 16=AA, 17=トリップス）。 */
+  flBreakdown?: Record<number, number>
   score: number
 }
 
@@ -143,6 +145,7 @@ function suggestionDTO(s: BoardSuggestion): SuggestionDTO {
     expRoyalty: s.expRoyalty,
     flProb: s.flProb,
     foulProb: s.foulProb,
+    flBreakdown: s.flBreakdown,
     score: s.score,
   }
 }

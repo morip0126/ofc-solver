@@ -232,6 +232,7 @@ function toSuggestionDTO(
     expRoyalty: m.expRoyalty,
     flProb: m.flProb,
     foulProb: m.foulProb,
+    flBreakdown: m.flBreakdown,
     score: m.score,
   }
 }
