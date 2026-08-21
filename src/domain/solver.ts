@@ -215,8 +215,11 @@ function flEntryFromTopKey(topKey: number, variant: Variant): number {
 
 /**
  * FL 突入の期待価値（points）。「次のハンドを通常ハンドの代わりに n 枚の FL として
- * 打てること」の差分価値で、リステイ連鎖（リステイ後は14枚と仮定）を織り込む:
- *   Δ(n) = S_FL(n) − S_N,  V(14) = Δ(14)/(1 − pStay(14)),  V(n) = Δ(n) + pStay(n)・V(14)
+ * 打てること」の差分価値で、リステイ連鎖を織り込む。**本ルームのルール = リステイ後も
+ * 同じ枚数を維持**（17枚FLでリステイすればまた17枚）なので、各 n が独立の連鎖になる:
+ *   Δ(n) = S_FL(n) − S_N,  V(n) = Δ(n)/(1 − pStay(n))
+ * （リステイ→14枚の標準ルール用の旧値は git 履歴参照: 52枚 {14.5,18.7,26.2,34.9} /
+ *   ジョーカー {20.4,28.7,36.8,44.0}）
  * S_FL / S_N は同一の相手モデル（ランダム13枚のロイヤリティ最善配置）に対する期待得点の
  * モンテカルロ実測（S_FL: n毎に220〜1600、S_N: 400ハンド）。相手モデル依存の項は差分で相殺される。
  * 実測: S_N=−8.01, S_FL={14:4.70, 15:8.62, 16:13.75, 17:19.10}
@@ -232,10 +235,10 @@ function flEntryFromTopKey(topKey: number, variant: Variant): number {
  * 専用の DEFAULT_FL_VALUES_JOKER を使う（evaluateBoard が jokers オプションで自動選択）。
  */
 export const DEFAULT_FL_VALUES: Readonly<Record<number, number>> = {
-  14: 14.5,
-  15: 18.7,
-  16: 26.2,
-  17: 34.9,
+  14: 14.2,
+  15: 20.7,
+  16: 33.3,
+  17: 60.0,
 }
 
 /**
@@ -254,15 +257,13 @@ export const DEFAULT_FOUL_WEIGHT = 9.0
 export const HINDSIGHT_FL_SCALE = 2.6
 
 /**
- * combined（既定の複合表示）の較正値。全統計を逐次プレイ（到着順コミット + 下段最適、
+ * combined（既定の複合表示）: 全統計を逐次プレイ（到着順コミット + 下段最適、
  * トップ確定型は品質ブレンド）で測り、
  *   EV = 期待ロイヤリティ + FL価値 − COMBINED_FOUL_WEIGHT×ファウル率
- * とする。FL価値はジョーカー入り（54枚）のときのみ COMBINED_FL_SCALE 倍
- * （参考ソルバーのジョーカー用グリッド Kd Kh 6d 5h 3h に合わせた較正。参考ソルバーは
- * 54枚デッキの逐次シミュレーションであることが FL 内訳の一致（KK 7.8% 等）で判明している）。
- * 52枚デッキは実測テーブルをそのまま使う（正直な期待値表示）。
+ * とする。FL価値は同枚数維持リステイの実測テーブルそのまま（スケール補正なし）。
+ * 参考ソルバー（54枚デッキの逐次シミュレーション。FL内訳 KK7.8% 等の一致で特定）の
+ * EV 水準は、このテーブルで自然に再現される（Kd Kh 6d 5h 3h グリッドで検証）。
  */
-export const COMBINED_FL_SCALE = 1.5
 export const COMBINED_FOUL_WEIGHT = 9
 
 function scaleFlValues(
@@ -281,7 +282,9 @@ function scaleFlValues(
  * 実測（S_N: 400ハンド、S_FL: n毎に320〜1200、相手8/6ドロー平均で分散低減）:
  *   S_N=−8.17±0.44, S_FL={14:4.54, 15:10.35, 16:15.58, 17:19.94},
  *   pStay={14:37.7%, 15:49.7%, 16:63.9%, 17:77.7%}（flStay.ts の100万ハンド実測）
- *   → Δ={14:12.71, 15:18.52, 16:23.75, 17:28.11}, V(14)=Δ/(1−p14)=20.4（SE≈±0.9）
+ *   → Δ={14:12.71, 15:18.52, 16:23.75, 17:28.11}, V(n)=Δ(n)/(1−pStay(n))
+ *   （同枚数維持リステイ。V(17)=28.11/0.223=126.1 — トリップスFLは77.7%で17枚連鎖するため
+ *     価値が非常に大きい。V(14) の SE≈±0.9、V(17) は 1/(1−p) の増幅で SE≈±5〜7）
  * 重み反復の収束確認: 本テーブル組み込み後に S_N を再計測（600ハンド）すると −7.97±0.40 で、
  * V の再計算値 {14:20.1, 15:28.3, 16:36.4, 17:43.5} は現行値と誤差内（1反復で収束）。
  * EV 検証（flValueAB.test.ts、同一配牌1000ハンドのペア比較、52枚用テーブル流用との対比）:
@@ -290,15 +293,23 @@ function scaleFlValues(
  */
 export const DEFAULT_FL_VALUES_JOKER: Readonly<Record<number, number>> = {
   14: 20.4,
-  15: 28.7,
-  16: 36.8,
-  17: 44.0,
+  15: 36.8,
+  16: 65.8,
+  17: 126.1,
 }
 
-/** リステイの目的関数ボーナス既定値 = V(14)（リステイは14枚で継続すると仮定）。 */
-export const DEFAULT_STAY_BONUS = DEFAULT_FL_VALUES[14]
+/**
+ * リステイの目的関数ボーナス = V(現在のFL枚数)。リステイは同じ枚数を維持するルームルール
+ * なので、いま打っているFLの枚数が大きいほどリステイの価値が高い（17枚なら126点）。
+ * 13枚FL（参考ルール）は V(14) で近似する。
+ */
+export function stayBonusFor(flCards: number, jokers: boolean): number {
+  const table = jokers ? DEFAULT_FL_VALUES_JOKER : DEFAULT_FL_VALUES
+  return table[Math.min(17, Math.max(14, flCards))] ?? table[14]
+}
 
-/** ジョーカー入りのリステイボーナス既定値 = ジョーカー入りの V(14)。 */
+/** 後方互換の既定値（14枚FL相当）。枚数が分かる場面では stayBonusFor を使うこと。 */
+export const DEFAULT_STAY_BONUS = DEFAULT_FL_VALUES[14]
 export const DEFAULT_STAY_BONUS_JOKER = DEFAULT_FL_VALUES_JOKER[14]
 
 export interface FantasylandOptions {
@@ -334,7 +345,9 @@ export function solveFantasyland(
 ): FantasylandResult[] {
   const n = cards.length
   if (n < 13 || n > 17) throw new Error(`solveFantasyland expects 13..17 cards, got ${n}`)
-  const { stayBonus = DEFAULT_STAY_BONUS, topK = 3, bottomRange } = options
+  // 既定のリステイボーナスは「同枚数維持ルール」に基づき V(現在の枚数)（52枚テーブル）。
+  // ジョーカー入りは呼び出し側が stayBonusFor(n, true) を渡すこと（worker は対応済み）。
+  const { stayBonus = stayBonusFor(n, false), topK = 3, bottomRange } = options
 
   const fives = prepFives(cards)
   const tops = prepTops(cards)
@@ -796,6 +809,12 @@ export interface RankOptions {
   futureModel?: FutureModel
   /** 'rollout' の各ストリート手選択に使う内側モンテカルロの反復数（既定 6）。 */
   rolloutInner?: number
+  /**
+   * policy/combined のトップ・コミットを攻撃的にする（実験用）: ジョーカーをトップに
+   * 投入してペア/トリップスを作りに行き、トリップス化の許容ストリートも広げる。
+   * 参考ソルバーのプレイヤー像（トリップスFL重視・高ファウル）の再現用。
+   */
+  aggressiveTopCommit?: boolean
 }
 
 export type FutureModel = 'combined' | 'policy' | 'rollout' | 'hindsight' | 'streets' | 'exact'
@@ -817,6 +836,7 @@ export function evaluateBoard(
     completionFlBonus,
     jokers = false,
     futureModel = 'combined',
+    aggressiveTopCommit = false,
   } = options
   const foulWeight =
     options.foulWeight ??
@@ -830,9 +850,7 @@ export function evaluateBoard(
     options.flValues ??
     (baseFlValues && futureModel === 'hindsight'
       ? scaleFlValues(baseFlValues, HINDSIGHT_FL_SCALE)
-      : baseFlValues && futureModel === 'combined' && jokers
-        ? scaleFlValues(baseFlValues, COMBINED_FL_SCALE)
-        : baseFlValues)
+      : baseFlValues)
   const flFlat = flWeight ?? 6
   const flValueOf = (flCards: number): number =>
     flCards > 0 ? (flValues ? (flValues[flCards] ?? 0) : flFlat) : 0
@@ -955,14 +973,38 @@ export function evaluateBoard(
       // 単騎の投機は最終ストリートではしない（相方を引く機会が残っていないため）。
       const lastStreet = s === streets - 1
       const byRank = [...group].sort((a, b) => seenCards[b].rank - seenCards[a].rank)
+      // トップの Q+ 単騎/ペアの有無（ジョーカー投入の判定に使う）
+      const topHighSingle = (): number => {
+        for (let r = 14; r >= 12; r--) if (topCnt[r] === 1) return r
+        return 0
+      }
+      const topAnyPair = (): number => {
+        for (let r = 14; r >= 2; r--) if (topCnt[r] === 2) return r
+        return 0
+      }
       for (let pass = 0; pass < 3; pass++) {
         for (const k of byRank) {
           if (topRoom <= 0 || placedTop >= 2) break
           const c = seenCards[k]
-          if (usedTop.has(k) || isJoker(c) || c.rank < 12) continue
+          if (usedTop.has(k)) continue
+          if (isJoker(c)) {
+            // 攻撃的モード: ジョーカーをトップに投入（Q+単騎→ペア化、ペア→トリップス化、
+            // 余裕があれば投機的単騎として温存置き）。
+            if (!aggressiveTopCommit) continue
+            if (pass !== 1) {
+              if (topHighSingle() > 0 || (topAnyPair() > 0 && s < 2)) commit(k)
+            } else if (!lastStreet && topRoom >= 2) {
+              commit(k)
+            }
+            continue
+          }
+          if (c.rank < 12) continue
           if (pass === 1) {
             if (!lastStreet && topRoom >= 2 && topCnt[c.rank] === 0) commit(k)
-          } else if (topCnt[c.rank] === 1 || (topCnt[c.rank] === 2 && s < 1)) {
+          } else if (
+            topCnt[c.rank] === 1 ||
+            (topCnt[c.rank] === 2 && s < (aggressiveTopCommit ? 2 : 1))
+          ) {
             commit(k)
           }
         }

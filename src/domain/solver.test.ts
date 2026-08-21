@@ -8,7 +8,6 @@ import {
   type Board,
   DEFAULT_FL_VALUES,
   DEFAULT_FL_VALUES_JOKER,
-  COMBINED_FL_SCALE,
   HINDSIGHT_FL_SCALE,
   bestCompletion,
   estimateEVvsRandom,
@@ -136,9 +135,9 @@ describe('evaluateBoard FL value table selection', () => {
     expect(m.flEV).toBe(DEFAULT_FL_VALUES[14])
   })
 
-  it('uses the scaled joker table when jokers=true (参考ソルバー較正)', () => {
+  it('uses the joker table when jokers=true', () => {
     const m = evaluateBoard(board, [], ULTIMATE, { jokers: true })
-    expect(m.flEV).toBeCloseTo(DEFAULT_FL_VALUES_JOKER[14] * COMBINED_FL_SCALE, 6)
+    expect(m.flEV).toBe(DEFAULT_FL_VALUES_JOKER[14])
   })
 
   it('hindsight モデルは FL 価値をスケールして使う', () => {

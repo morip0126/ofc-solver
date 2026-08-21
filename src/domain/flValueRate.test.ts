@@ -6,7 +6,9 @@
 //   - 相手モデル: 残りデッキからランダム13枚をロイヤリティ最善配置（solveBest13）
 //   - S_N: 通常ハンドのヒューリスティック逐次プレイ（suggestInitial5 → suggestStreet ×4）の期待得点
 //   - S_FL(n): n枚 FL を solveFantasyland で打った期待得点
-//   - Δ(n) = S_FL(n) − S_N,  V(14) = Δ(14)/(1 − pStay(14)),  V(n) = Δ(n) + pStay(n)・V(14)
+//   - Δ(n) = S_FL(n) − S_N,  V(n) = Δ(n)/(1 − pStay(n))
+//     （同枚数維持リステイのルームルール。リステイ→14枚の標準ルールなら
+//       V(14)=Δ(14)/(1−p14), V(n)=Δ(n)+pStay(n)・V(14)）
 // pStay は flStayRate.test.ts の100万ハンド実測値を使う。
 // 相手モデル依存の項は Δ で相殺される。ジョーカーの有無それぞれで計測できる。
 
@@ -164,14 +166,13 @@ function runDeck(jokers: boolean, stayBonus: number): void {
     )
   }
 
-  // 価値の連鎖: V(14) = Δ(14)/(1-p14), V(n) = Δ(n) + p(n)・V(14)
+  // 価値の連鎖（同枚数維持リステイ）: V(n) = Δ(n)/(1 − pStay(n))
   const delta: Record<number, number> = {}
   for (let n = 14; n <= 17; n++) delta[n] = sfl[n].mean - sn.mean
-  const v14 = delta[14] / (1 - pStay[14])
   console.log(
     `[${label}] Δ={14:${delta[14].toFixed(2)}, 15:${delta[15].toFixed(2)}, 16:${delta[16].toFixed(2)}, 17:${delta[17].toFixed(2)}}`,
   )
-  const v = (n: number) => (n === 14 ? v14 : delta[n] + pStay[n] * v14)
+  const v = (n: number) => delta[n] / (1 - pStay[n])
   console.log(
     `[${label}] V={14:${v(14).toFixed(1)}, 15:${v(15).toFixed(1)}, 16:${v(16).toFixed(1)}, 17:${v(17).toFixed(1)}} (stayBonus=${stayBonus}で計測)`,
   )
