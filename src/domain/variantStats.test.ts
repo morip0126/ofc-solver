@@ -40,6 +40,9 @@ const CHASE_HANDS = Number(process.env.FL_CHASE_HANDS ?? 0)
 // 探索精度のA/B: 重みは据え置きで、試行回数・未来モデルだけ上げて突入率とμがどう動くかを見る。
 const PRECISION_HANDS = Number(process.env.FL_PRECISION_HANDS ?? 0)
 
+// 精度スケーリング: streets のまま 8倍/16倍 iters + 高精度×チェイス重みの相互作用。
+const PRECISION2_HANDS = Number(process.env.FL_PRECISION2_HANDS ?? 0)
+
 interface PlayPrecision {
   initIters: number
   streetIters: number
@@ -252,6 +255,35 @@ describe('precision A/B (set FL_PRECISION_HANDS to run)', () => {
       streetIters: 130,
       refineTopK: 8,
       futureModel: 'combined',
+    })
+  }, 14_400_000)
+})
+
+describe('precision scaling (set FL_PRECISION2_HANDS to run)', () => {
+  it.skipIf(PRECISION2_HANDS <= 0)('ultimate / 54-card joker, streets 8x iters', () => {
+    runConfig(ULTIMATE, true, PRECISION2_HANDS, 0xa154, 1, {
+      initIters: 512,
+      streetIters: 768,
+      refineTopK: 16,
+      futureModel: 'streets',
+    })
+  }, 14_400_000)
+
+  it.skipIf(PRECISION2_HANDS <= 0)('ultimate / 54-card joker, streets 16x iters', () => {
+    runConfig(ULTIMATE, true, PRECISION2_HANDS, 0xa154, 1, {
+      initIters: 1024,
+      streetIters: 1536,
+      refineTopK: 16,
+      futureModel: 'streets',
+    })
+  }, 14_400_000)
+
+  it.skipIf(PRECISION2_HANDS <= 0)('ultimate / 54-card joker, streets 4x iters + FL values x1.3', () => {
+    runConfig(ULTIMATE, true, PRECISION2_HANDS, 0xa154, 1.3, {
+      initIters: 256,
+      streetIters: 384,
+      refineTopK: 12,
+      futureModel: 'streets',
     })
   }, 14_400_000)
 })
