@@ -19,6 +19,8 @@ import { type Arrangement, type EvaluatedArrangement, evaluateArrangement,
   fantasylandCards, scoreEvaluated } from './score'
 import {
   type Board,
+  DEFAULT_FL_VALUES,
+  DEFAULT_FL_VALUES_JOKER,
   solveBest13,
   solveFantasyland,
   suggestInitial5,
