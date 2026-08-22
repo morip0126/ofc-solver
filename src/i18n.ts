@@ -11,6 +11,7 @@ const messages = {
   variant: { ja: '種類', en: 'Variant' },
   variantNormal: { ja: 'ノーマル', en: 'Normal' },
   variantUltimate: { ja: 'アルティメット', en: 'Ultimate' },
+  variantProgressive: { ja: 'プログレッシブ', en: 'Progressive' },
   deck: { ja: 'デッキ', en: 'Deck' },
   deck52: { ja: '52枚', en: '52 cards' },
   deck54: { ja: '54枚（ジョーカー入り）', en: '54 (jokers)' },

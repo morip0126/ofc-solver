@@ -850,7 +850,7 @@ export default function App() {
   // 現在のルール構成（種類 × デッキ）の成績バケット。
   const vsConfig = vsConfigKey(variantId, useJokers)
   const vsStats = vsStatsAll[vsConfig] ?? emptyVsStats()
-  const vsConfigLabel = `${t(lang, variantId === 'normal' ? 'variantNormal' : 'variantUltimate')} / ${t(lang, useJokers ? 'deck54' : 'deck52')}`
+  const vsConfigLabel = `${VARIANTS[variantId].name[lang]} / ${t(lang, useJokers ? 'deck54' : 'deck52')}`
 
   const resetVsStats = useCallback(() => {
     setVsStatsAll((all) => {
@@ -896,8 +896,11 @@ export default function App() {
     const vEval = evaluateArrangement(v)
     const nextFLOf = (curFL: number, e: typeof hEval, entryCards: number) => {
       if (e.fouled) return 0
-      // リステイは同じ枚数を維持するルームルール（14枚固定ではない）
-      if (curFL > 0) return variant.fantasylandStay(e.top, e.middle, e.bottom) ? curFL : 0
+      // リステイ枚数は種類のルールに従う（アルティメット=同枚数維持、プログレッシブ=14枚に戻る）
+      if (curFL > 0) {
+        if (!variant.fantasylandStay(e.top, e.middle, e.bottom)) return 0
+        return variant.restayKeepsCount ? curFL : 14
+      }
       return entryCards
     }
     return {
@@ -994,6 +997,7 @@ export default function App() {
           <select value={variantId} onChange={(e) => setVariantId(e.target.value as VariantId)}>
             <option value="normal">{t(lang, 'variantNormal')}</option>
             <option value="ultimate">{t(lang, 'variantUltimate')}</option>
+            <option value="progressive">{t(lang, 'variantProgressive')}</option>
           </select>
         </label>
         <label className="ctrl-select">
@@ -1404,7 +1408,7 @@ export default function App() {
           {flResults.length > 0 && (
             <p className="ev-hint">
               {t(lang, 'flHint', {
-                bonus: stayBonusFor(pool.length, useJokers),
+                bonus: stayBonusFor(pool.length, useJokers, variant),
               })}
             </p>
           )}

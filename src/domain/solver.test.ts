@@ -3,12 +3,15 @@ import { type Card, cardId, parseCards } from './cards'
 import { mulberry32 } from './combinatorics'
 import { HandCategory, categoryOf } from './evaluator'
 import type { Arrangement } from './score'
-import { NORMAL, ULTIMATE } from './variants'
+import { NORMAL, PROGRESSIVE, ULTIMATE } from './variants'
 import {
   type Board,
   DEFAULT_FL_VALUES,
   DEFAULT_FL_VALUES_JOKER,
   HINDSIGHT_FL_SCALE,
+  PROGRESSIVE_FL_VALUES,
+  PROGRESSIVE_FL_VALUES_JOKER,
+  stayBonusFor,
   bestCompletion,
   estimateEVvsRandom,
   evaluateBoard,
@@ -143,5 +146,20 @@ describe('evaluateBoard FL value table selection', () => {
   it('hindsight モデルは FL 価値をスケールして使う', () => {
     const m = evaluateBoard(board, [], ULTIMATE, { futureModel: 'hindsight' })
     expect(m.flEV).toBeCloseTo(DEFAULT_FL_VALUES[14] * HINDSIGHT_FL_SCALE, 6)
+  })
+
+  it('プログレッシブはプログレッシブ用テーブルを使う', () => {
+    const m = evaluateBoard(board, [], PROGRESSIVE)
+    expect(m.flEV).toBe(PROGRESSIVE_FL_VALUES[14])
+    const mj = evaluateBoard(board, [], PROGRESSIVE, { jokers: true })
+    expect(mj.flEV).toBe(PROGRESSIVE_FL_VALUES_JOKER[14])
+  })
+
+  it('stayBonusFor: プログレッシブのリステイボーナスは枚数によらず V(14)', () => {
+    expect(stayBonusFor(17, false, PROGRESSIVE)).toBe(PROGRESSIVE_FL_VALUES[14])
+    expect(stayBonusFor(17, true, PROGRESSIVE)).toBe(PROGRESSIVE_FL_VALUES_JOKER[14])
+    // アルティメット（同枚数維持）は V(n)
+    expect(stayBonusFor(17, false, ULTIMATE)).toBe(DEFAULT_FL_VALUES[17])
+    expect(stayBonusFor(17, true, ULTIMATE)).toBe(DEFAULT_FL_VALUES_JOKER[17])
   })
 })

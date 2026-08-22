@@ -163,7 +163,7 @@ export function loadSettings(): Partial<PersistedSettings> {
   const out: Partial<PersistedSettings> = {}
   const lang = oneOf(o.lang, ['ja', 'en'] as const)
   if (lang) out.lang = lang
-  const variantId = oneOf(o.variantId, ['normal', 'ultimate'] as const)
+  const variantId = oneOf(o.variantId, ['normal', 'ultimate', 'progressive'] as const)
   if (variantId) out.variantId = variantId as VariantId
   const players = oneOf(o.players, [2, 3] as const)
   if (players) out.players = players

@@ -306,11 +306,36 @@ export const DEFAULT_FL_VALUES_JOKER: Readonly<Record<number, number>> = {
 }
 
 /**
+ * プログレッシブ（突入時のみ枚数増、リステイは14枚に戻る）用の FL 期待価値。
+ * 同じ実測量（S_FL, S_N, pStay, pEntry）から解析的に導出:
+ *   μ = S_N + E_N,  V(14) = (S_FL(14) − μ)/(1 − pStay(14)),
+ *   V(n≥15) = (S_FL(n) − μ) + pStay(n)・V(14),  E_N = Σ pEntry(k)・V(k) の不動点。
+ * 15〜17枚はリステイしても14枚連鎖に落ちるため、同枚数維持ルールより価値が小さい。
+ */
+export const PROGRESSIVE_FL_VALUES: Readonly<Record<number, number>> = {
+  14: 11.1,
+  15: 17.2,
+  16: 23.4,
+  17: 30.5,
+}
+
+export const PROGRESSIVE_FL_VALUES_JOKER: Readonly<Record<number, number>> = {
+  14: 11.6,
+  15: 18.8,
+  16: 25.6,
+  17: 31.6,
+}
+
+/**
  * リステイの目的関数ボーナス = V(現在のFL枚数)。リステイは同じ枚数を維持するルームルール
  * なので、いま打っているFLの枚数が大きいほどリステイの価値が高い（17枚なら126点）。
  * 13枚FL（参考ルール）は V(14) で近似する。
  */
-export function stayBonusFor(flCards: number, jokers: boolean): number {
+export function stayBonusFor(flCards: number, jokers: boolean, variant?: Variant): number {
+  // プログレッシブはリステイで14枚に戻るため、ボーナスは常に V(14)。
+  if (variant && !variant.restayKeepsCount) {
+    return (jokers ? PROGRESSIVE_FL_VALUES_JOKER : PROGRESSIVE_FL_VALUES)[14]
+  }
   const table = jokers ? DEFAULT_FL_VALUES_JOKER : DEFAULT_FL_VALUES
   return table[Math.min(17, Math.max(14, flCards))] ?? table[14]
 }
@@ -352,9 +377,9 @@ export function solveFantasyland(
 ): FantasylandResult[] {
   const n = cards.length
   if (n < 13 || n > 17) throw new Error(`solveFantasyland expects 13..17 cards, got ${n}`)
-  // 既定のリステイボーナスは「同枚数維持ルール」に基づき V(現在の枚数)（52枚テーブル）。
-  // ジョーカー入りは呼び出し側が stayBonusFor(n, true) を渡すこと（worker は対応済み）。
-  const { stayBonus = stayBonusFor(n, false), topK = 3, bottomRange } = options
+  // 既定のリステイボーナス = stayBonusFor（種類のリステイ枚数ルールに従う。52枚テーブル）。
+  // ジョーカー入りは呼び出し側が stayBonusFor(n, true, variant) を渡すこと（worker は対応済み）。
+  const { stayBonus = stayBonusFor(n, false, variant), topK = 3, bottomRange } = options
 
   const fives = prepFives(cards)
   const tops = prepTops(cards)
@@ -852,7 +877,15 @@ export function evaluateBoard(
   // （デッキに応じて 52枚用 / ジョーカー入り用を選ぶ）。hindsight / combined モデルは
   // 参考ソルバーの FL 重視の価値付けに合わせてスケールする。
   const baseFlValues =
-    flWeight !== undefined ? undefined : jokers ? DEFAULT_FL_VALUES_JOKER : DEFAULT_FL_VALUES
+    flWeight !== undefined
+      ? undefined
+      : variant.restayKeepsCount
+        ? jokers
+          ? DEFAULT_FL_VALUES_JOKER
+          : DEFAULT_FL_VALUES
+        : jokers
+          ? PROGRESSIVE_FL_VALUES_JOKER
+          : PROGRESSIVE_FL_VALUES
   const flValues =
     options.flValues ??
     (baseFlValues && futureModel === 'hindsight'

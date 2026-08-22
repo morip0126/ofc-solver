@@ -11,6 +11,11 @@ export interface Variant {
   id: string
   name: { ja: string; en: string }
   /**
+   * リステイ後の FL 枚数ルール。true = 同じ枚数を維持（アルティメット）、
+   * false = 14枚に戻る（プログレッシブ: 突入時だけ役に応じて枚数が増える）。
+   */
+  restayKeepsCount: boolean
+  /**
    * top ハンドから、次局のファンタジーランドで配られる枚数を返す（0 = FL に入らない）。
    * 呼び出し側はファウルしていない前提で使う。
    */
@@ -33,6 +38,7 @@ function staysInFantasyland(top: HandValue, _middle: HandValue, bottom: HandValu
 export const NORMAL: Variant = {
   id: 'normal',
   name: { ja: 'ノーマル', en: 'Normal' },
+  restayKeepsCount: true, // 常に14枚なので自明に同枚数
   fantasylandEntryCards(top) {
     if (top[0] === HandCategory.Trips) return 14
     if (top[0] === HandCategory.Pair && top[1] >= 12) return 14
@@ -41,10 +47,11 @@ export const NORMAL: Variant = {
   fantasylandStay: staysInFantasyland,
 }
 
-/** アルティメット（プログレッシブ FL）: QQ=14, KK=15, AA=16, top トリップス=17 枚。 */
+/** アルティメット: QQ=14, KK=15, AA=16, top トリップス=17 枚。リステイは同枚数を維持。 */
 export const ULTIMATE: Variant = {
   id: 'ultimate',
   name: { ja: 'アルティメット', en: 'Ultimate' },
+  restayKeepsCount: true,
   fantasylandEntryCards(top) {
     if (top[0] === HandCategory.Trips) return 17
     if (top[0] === HandCategory.Pair) {
@@ -57,5 +64,14 @@ export const ULTIMATE: Variant = {
   fantasylandStay: staysInFantasyland,
 }
 
-export const VARIANTS = { normal: NORMAL, ultimate: ULTIMATE } as const
+/** プログレッシブ: 突入時のみ QQ=14, KK=15, AA=16, トリップス=17 枚。リステイは14枚に戻る。 */
+export const PROGRESSIVE: Variant = {
+  id: 'progressive',
+  name: { ja: 'プログレッシブ', en: 'Progressive' },
+  restayKeepsCount: false,
+  fantasylandEntryCards: ULTIMATE.fantasylandEntryCards,
+  fantasylandStay: staysInFantasyland,
+}
+
+export const VARIANTS = { normal: NORMAL, ultimate: ULTIMATE, progressive: PROGRESSIVE } as const
 export type VariantId = keyof typeof VARIANTS
