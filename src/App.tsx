@@ -1,8 +1,7 @@
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   type Card,
-  DEFAULT_STAY_BONUS,
-  DEFAULT_STAY_BONUS_JOKER,
+  stayBonusFor,
   ROW_CAP,
   type RowKey,
   type VariantId,
@@ -897,7 +896,8 @@ export default function App() {
     const vEval = evaluateArrangement(v)
     const nextFLOf = (curFL: number, e: typeof hEval, entryCards: number) => {
       if (e.fouled) return 0
-      if (curFL > 0) return variant.fantasylandStay(e.top, e.middle, e.bottom) ? 14 : 0
+      // リステイは同じ枚数を維持するルームルール（14枚固定ではない）
+      if (curFL > 0) return variant.fantasylandStay(e.top, e.middle, e.bottom) ? curFL : 0
       return entryCards
     }
     return {
@@ -1404,7 +1404,7 @@ export default function App() {
           {flResults.length > 0 && (
             <p className="ev-hint">
               {t(lang, 'flHint', {
-                bonus: useJokers ? DEFAULT_STAY_BONUS_JOKER : DEFAULT_STAY_BONUS,
+                bonus: stayBonusFor(pool.length, useJokers),
               })}
             </p>
           )}

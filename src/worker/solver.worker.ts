@@ -4,8 +4,6 @@ import {
   type Board,
   type BoardSuggestion,
   type CandidateMetric,
-  DEFAULT_STAY_BONUS,
-  DEFAULT_STAY_BONUS_JOKER,
   type FantasylandResult,
   type FutureModel,
   type VariantId,
@@ -17,6 +15,7 @@ import {
   mulberry32,
   parseCards,
   solveFantasyland,
+  stayBonusFor,
   suggestInitial5,
   suggestStreet,
 } from '../domain'
@@ -201,9 +200,10 @@ self.onmessage = (e: MessageEvent<WorkerRequest>) => {
       }
       case 'solveFL': {
         // リステイボーナス既定値 = 実測した V(14)（デッキに応じて 52枚用 / ジョーカー入り用）。
-        const results = solveFantasyland(parseCards(msg.cards), variant, {
-          stayBonus:
-            msg.stayBonus ?? (msg.jokers ? DEFAULT_STAY_BONUS_JOKER : DEFAULT_STAY_BONUS),
+        const flCards = parseCards(msg.cards)
+        const results = solveFantasyland(flCards, variant, {
+          // 同枚数維持ルール: リステイボーナス = V(現在のFL枚数)
+          stayBonus: msg.stayBonus ?? stayBonusFor(flCards.length, msg.jokers ?? false),
           topK: msg.topK ?? 3,
           bottomRange: msg.bottomRange,
         })
