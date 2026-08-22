@@ -3,8 +3,8 @@
 //   FL_VALUE_AB_HANDS=1000 pnpm vitest run src/domain/flValueAB.test.ts --testTimeout=7200000
 //
 // ジョーカー入り（54枚）の通常ハンドを、同じ配牌・同じ推奨手MC乱数・同じ相手ドローで
-//   OLD: 52枚用 DEFAULT_FL_VALUES を流用（変更前の挙動）
-//   NEW: ジョーカー用 DEFAULT_FL_VALUES_JOKER
+//   OLD: E_N 補正なしの同枚数維持テーブル（参考ソルバーの価値水準 = VALUES_PREV）
+//   NEW: E_N 補正つき不動点テーブル（現行 DEFAULT_FL_VALUES_JOKER）
 // の両ポリシーでプレイし、J = 対戦スコア + FL突入時の実測FL価値 のペア差を集計する。
 // 配牌運・相手運・MCノイズが相殺され、判断が分かれたハンドの損得だけが残る。
 //
@@ -26,12 +26,14 @@ import {
 } from './score'
 import {
   type Board,
-  DEFAULT_FL_VALUES,
   DEFAULT_FL_VALUES_JOKER,
   solveBest13,
   suggestInitial5,
   suggestStreet,
 } from './solver'
+
+// 変更前のテーブル（E_N 補正なしの同枚数維持値 = 参考ソルバーの価値水準）。
+const VALUES_PREV: Readonly<Record<number, number>> = { 14: 20.4, 15: 36.8, 16: 65.8, 17: 126.1 }
 import { ULTIMATE } from './variants'
 
 const HANDS = Number(process.env.FL_VALUE_AB_HANDS ?? 0)
@@ -55,6 +57,7 @@ function playHand(
     refineTopK: 8,
     jokers: true,
     flValues,
+    futureModel: 'streets',
     rng,
   })[0].board
   const discards: Card[] = []
@@ -64,6 +67,7 @@ function playHand(
       iters: 96,
       jokers: true,
       flValues,
+      futureModel: 'streets',
       rng,
     })[0]
     board = best.board
@@ -98,7 +102,7 @@ describe('FL value A/B paired comparison (set FL_VALUE_AB_HANDS to run)', () => 
       shuffle(deck, dealRng)
       const deal = deck.slice(0, 17)
       const playSeed = 0x9a000 + h
-      const oldP = playHand(deal, DEFAULT_FL_VALUES, playSeed)
+      const oldP = playHand(deal, VALUES_PREV, playSeed)
       const newP = playHand(deal, DEFAULT_FL_VALUES_JOKER, playSeed)
 
       if (oldP.final.fouled) stats.old.foul++
