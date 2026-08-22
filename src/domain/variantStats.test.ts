@@ -36,6 +36,18 @@ const HANDS = Number(process.env.VARIANT_STATS_HANDS ?? 0)
 // 突入率と総合μがどう動くかを見る（FL中のプレー・リステイボーナスは変えない）。
 const CHASE_HANDS = Number(process.env.FL_CHASE_HANDS ?? 0)
 
+// 探索精度のA/B: 重みは据え置きで、試行回数・未来モデルだけ上げて突入率とμがどう動くかを見る。
+const PRECISION_HANDS = Number(process.env.FL_PRECISION_HANDS ?? 0)
+
+interface PlayPrecision {
+  initIters: number
+  streetIters: number
+  refineTopK: number
+  futureModel: 'streets' | 'combined'
+}
+
+const LIGHT: PlayPrecision = { initIters: 64, streetIters: 96, refineTopK: 8, futureModel: 'streets' }
+
 function scoreVsOpponents(
   hero: EvaluatedArrangement,
   seen: readonly Card[],
@@ -53,9 +65,18 @@ function scoreVsOpponents(
   return sum / k
 }
 
-function runConfig(variant: Variant, jokers: boolean, hands: number, seed: number, flScale = 1): void {
+function runConfig(
+  variant: Variant,
+  jokers: boolean,
+  hands: number,
+  seed: number,
+  flScale = 1,
+  prec: PlayPrecision = LIGHT,
+): void {
   const label =
-    `${variant.id} / ${jokers ? '54枚+ジョーカー2' : '52枚'}` + (flScale !== 1 ? ` / FL価値×${flScale}` : '')
+    `${variant.id} / ${jokers ? '54枚+ジョーカー2' : '52枚'}` +
+    (flScale !== 1 ? ` / FL価値×${flScale}` : '') +
+    (prec !== LIGHT ? ` / ${prec.futureModel} ${prec.initIters}/${prec.streetIters}` : '')
   const baseValues = variant.restayKeepsCount
     ? jokers
       ? DEFAULT_FL_VALUES_JOKER
@@ -109,22 +130,22 @@ function runConfig(variant: Variant, jokers: boolean, hands: number, seed: numbe
     } else {
       normalHands++
       let board: Board = suggestInitial5(deck.slice(0, 5), [], variant, {
-        iters: 64,
-        refineTopK: 8,
+        iters: prec.initIters,
+        refineTopK: prec.refineTopK,
         jokers,
         rng,
         flValues,
-        futureModel: 'streets',
+        futureModel: prec.futureModel,
       })[0].board
       const discards: Card[] = []
       for (let s = 0; s < 4; s++) {
         const drawn = deck.slice(5 + 3 * s, 8 + 3 * s)
         const best = suggestStreet(board, drawn, discards, variant, {
-          iters: 96,
+          iters: prec.streetIters,
           jokers,
           rng,
           flValues,
-          futureModel: 'streets',
+          futureModel: prec.futureModel,
         })[0]
         board = best.board
         if (best.discarded) discards.push(best.discarded)
@@ -201,5 +222,25 @@ describe('FL chase A/B (set FL_CHASE_HANDS to run)', () => {
 
   it.skipIf(CHASE_HANDS <= 0)('ultimate / 52-card, FL values x1.5', () => {
     runConfig(ULTIMATE, false, CHASE_HANDS, 0xa152, 1.5)
+  }, 14_400_000)
+})
+
+describe('precision A/B (set FL_PRECISION_HANDS to run)', () => {
+  it.skipIf(PRECISION_HANDS <= 0)('ultimate / 54-card joker, streets 4x iters', () => {
+    runConfig(ULTIMATE, true, PRECISION_HANDS, 0xa154, 1, {
+      initIters: 256,
+      streetIters: 384,
+      refineTopK: 12,
+      futureModel: 'streets',
+    })
+  }, 14_400_000)
+
+  it.skipIf(PRECISION_HANDS <= 0)('ultimate / 54-card joker, combined standard iters', () => {
+    runConfig(ULTIMATE, true, PRECISION_HANDS, 0xa154, 1, {
+      initIters: 100,
+      streetIters: 130,
+      refineTopK: 8,
+      futureModel: 'combined',
+    })
   }, 14_400_000)
 })
