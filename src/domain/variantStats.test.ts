@@ -286,4 +286,14 @@ describe('precision scaling (set FL_PRECISION2_HANDS to run)', () => {
       futureModel: 'streets',
     })
   }, 14_400_000)
+
+  // 初手配置の精選別幅を広げる（コース選別で良いFLルートが落ちていないかの検証）。
+  it.skipIf(PRECISION2_HANDS <= 0)('ultimate / 54-card joker, streets 4x iters + wide refine', () => {
+    runConfig(ULTIMATE, true, PRECISION2_HANDS, 0xa154, 1, {
+      initIters: 256,
+      streetIters: 384,
+      refineTopK: 48,
+      futureModel: 'streets',
+    })
+  }, 14_400_000)
 })
