@@ -14,6 +14,7 @@ import {
   type EvaluatedArrangement,
   evaluateArrangement,
   fantasylandCards,
+  royaltiesTotal,
   scoreEvaluated,
 } from './score'
 import {
@@ -98,6 +99,9 @@ function runConfig(
   let flHands = 0
   let flSum = 0
   let stays = 0
+  // 素点 = 自分のロイヤリティ（ファウルは0）。相手に依存しない。
+  let royNormal = 0
+  let royFL = 0
   const entries: Record<number, number> = { 14: 0, 15: 0, 16: 0, 17: 0 }
   const flPlayed: Record<number, number> = { 14: 0, 15: 0, 16: 0, 17: 0 }
   const t0 = Date.now()
@@ -118,6 +122,7 @@ function runConfig(
         sc = -6
         pendingFL = 0
       } else {
+        royFL += best.royalties
         sc = scoreVsOpponents(best.evaluated, cards, jokers, rng, 6)
         if (best.stays) {
           stays++
@@ -153,6 +158,7 @@ function runConfig(
       const final = evaluateArrangement(board as Arrangement)
       if (final.fouled) fouls++
       else {
+        royNormal += royaltiesTotal(final)
         const fc = fantasylandCards(final, variant)
         if (fc > 0) {
           entries[fc] = (entries[fc] ?? 0) + 1
@@ -179,6 +185,11 @@ function runConfig(
     `[${label}] 平均得点/ハンド μ = ${mean.toFixed(2)} ±${se.toFixed(2)} ` +
       `(通常 ${normalHands}ハンド: ${(normalSum / Math.max(1, normalHands)).toFixed(2)}, ` +
       `FL ${flHands}ハンド: ${(flSum / Math.max(1, flHands)).toFixed(2)})`,
+  )
+  console.log(
+    `[${label}] 素点(ロイヤリティ)/ハンド = ${((royNormal + royFL) / hands).toFixed(2)} ` +
+      `(通常: ${(royNormal / Math.max(1, normalHands)).toFixed(2)}, ` +
+      `FL: ${(royFL / Math.max(1, flHands)).toFixed(2)})`,
   )
   console.log(
     `[${label}] 通常ハンド: ファウル ${pct(fouls, normalHands)}% ` +
