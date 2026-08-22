@@ -16,10 +16,25 @@ import {
   fantasylandCards,
   scoreEvaluated,
 } from './score'
-import { type Board, solveBest13, solveFantasyland, stayBonusFor, suggestInitial5, suggestStreet } from './solver'
+import {
+  type Board,
+  DEFAULT_FL_VALUES,
+  DEFAULT_FL_VALUES_JOKER,
+  PROGRESSIVE_FL_VALUES,
+  PROGRESSIVE_FL_VALUES_JOKER,
+  solveBest13,
+  solveFantasyland,
+  stayBonusFor,
+  suggestInitial5,
+  suggestStreet,
+} from './solver'
 import { PROGRESSIVE, ULTIMATE, type Variant } from './variants'
 
 const HANDS = Number(process.env.VARIANT_STATS_HANDS ?? 0)
+
+// FLチェイス度のA/B: 通常ハンドの候補評価に使うFL価値を flScale 倍に水増しして、
+// 突入率と総合μがどう動くかを見る（FL中のプレー・リステイボーナスは変えない）。
+const CHASE_HANDS = Number(process.env.FL_CHASE_HANDS ?? 0)
 
 function scoreVsOpponents(
   hero: EvaluatedArrangement,
@@ -38,8 +53,18 @@ function scoreVsOpponents(
   return sum / k
 }
 
-function runConfig(variant: Variant, jokers: boolean, hands: number, seed: number): void {
-  const label = `${variant.id} / ${jokers ? '54枚+ジョーカー2' : '52枚'}`
+function runConfig(variant: Variant, jokers: boolean, hands: number, seed: number, flScale = 1): void {
+  const label =
+    `${variant.id} / ${jokers ? '54枚+ジョーカー2' : '52枚'}` + (flScale !== 1 ? ` / FL価値×${flScale}` : '')
+  const baseValues = variant.restayKeepsCount
+    ? jokers
+      ? DEFAULT_FL_VALUES_JOKER
+      : DEFAULT_FL_VALUES
+    : jokers
+      ? PROGRESSIVE_FL_VALUES_JOKER
+      : PROGRESSIVE_FL_VALUES
+  const flValues: Record<number, number> = {}
+  for (let n = 14; n <= 17; n++) flValues[n] = baseValues[n] * flScale
   const rng = mulberry32(seed)
   const deck = makeDeck(jokers)
 
@@ -88,6 +113,7 @@ function runConfig(variant: Variant, jokers: boolean, hands: number, seed: numbe
         refineTopK: 8,
         jokers,
         rng,
+        flValues,
         futureModel: 'streets',
       })[0].board
       const discards: Card[] = []
@@ -97,6 +123,7 @@ function runConfig(variant: Variant, jokers: boolean, hands: number, seed: numbe
           iters: 96,
           jokers,
           rng,
+          flValues,
           futureModel: 'streets',
         })[0]
         board = best.board
@@ -160,5 +187,19 @@ describe('variant lifecycle stats (set VARIANT_STATS_HANDS to run)', () => {
 
   it.skipIf(HANDS <= 0)('progressive / 54-card joker', () => {
     runConfig(PROGRESSIVE, true, HANDS, 0xb154)
+  }, 14_400_000)
+})
+
+describe('FL chase A/B (set FL_CHASE_HANDS to run)', () => {
+  it.skipIf(CHASE_HANDS <= 0)('ultimate / 54-card joker, FL values x1.3', () => {
+    runConfig(ULTIMATE, true, CHASE_HANDS, 0xa154, 1.3)
+  }, 14_400_000)
+
+  it.skipIf(CHASE_HANDS <= 0)('ultimate / 54-card joker, FL values x1.6', () => {
+    runConfig(ULTIMATE, true, CHASE_HANDS, 0xa154, 1.6)
+  }, 14_400_000)
+
+  it.skipIf(CHASE_HANDS <= 0)('ultimate / 52-card, FL values x1.5', () => {
+    runConfig(ULTIMATE, false, CHASE_HANDS, 0xa152, 1.5)
   }, 14_400_000)
 })
