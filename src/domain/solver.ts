@@ -842,6 +842,12 @@ export interface RankOptions {
   /** 'rollout' の各ストリート手選択に使う内側モンテカルロの反復数（既定 6）。 */
   rolloutInner?: number
   /**
+   * 'rollout' の内側見積もりに使う末端モデル（既定 'streets'）。
+   * 'policy' は文脈つきのチェイス方針で未来を見ない（streets の静的捨て+後知恵配置の
+   * 保守バイアスを避けたいときに使う。KKハンド比較の壁打ち検証用、2026-08）。
+   */
+  rolloutLeaf?: 'streets' | 'policy'
+  /**
    * policy/combined のトップ・コミットを攻撃的にする（実験用）: ジョーカーをトップに
    * 投入してペア/トリップスを作りに行き、トリップス化の許容ストリートも広げる。
    * 参考ソルバーのプレイヤー像（トリップスFL重視・高ファウル）の再現用。
@@ -1174,6 +1180,7 @@ export function evaluateBoard(
    * （futureModel:'streets'、軽量）で採点して最良を選ぶ。固定方針なし・後知恵なし。
    */
   const rolloutInner = options.rolloutInner ?? 16
+  const rolloutLeaf = options.rolloutLeaf ?? 'streets'
   const rolloutBest = (): ScoredArrangement | null => {
     const cur: Board = { top: [...board.top], middle: [...board.middle], bottom: [...board.bottom] }
     const curDead: Card[] = [...dead]
@@ -1194,7 +1201,7 @@ export function evaluateBoard(
           flValues,
           foulWeight,
           jokers,
-          futureModel: 'streets',
+          futureModel: rolloutLeaf,
         })
         if (m.score > bestScore) {
           bestScore = m.score

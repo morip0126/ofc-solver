@@ -13,6 +13,7 @@ import { ULTIMATE } from './variants'
 const CHUNK = process.env.DEEP_GRID_CHUNK ?? ''
 const ITERS = Number(process.env.DEEP_GRID_ITERS ?? 280)
 const INNER = Number(process.env.DEEP_GRID_INNER ?? 48)
+const LEAF = (process.env.DEEP_GRID_LEAF ?? 'streets') as 'streets' | 'policy'
 const SEED = 0xdeeb
 
 describe('deep grid: KK reference hand (set DEEP_GRID_CHUNK to run)', () => {
@@ -30,6 +31,7 @@ describe('deep grid: KK reference hand (set DEEP_GRID_CHUNK to run)', () => {
       jokers: true,
       futureModel: 'rollout',
       rolloutInner: INNER,
+      rolloutLeaf: LEAF,
     })
     for (const m of results) {
       const b = boards[m.index]
