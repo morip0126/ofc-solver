@@ -98,9 +98,9 @@ const PRECISION_ITERS: Record<Precision, { initial: number; street: number; ev: 
   standard: { initial: 100, street: 130, ev: 400 },
   high: { initial: 280, street: 350, ev: 1200 },
   ultra: { initial: 700, street: 900, ev: 3000 },
-  // 解析: 逐次最適プレイのロールアウト（rollout モデル）。iters はロールアウト本数。
-  // 初手は粗選別なしの全候補直当て + 内側MC増量（rolloutInnerFor）なので数十分〜かかる。
-  deep: { initial: 280, street: 280, ev: 3000 },
+  // 解析: 逐次最適プレイのロールアウト（rollout モデル、末端 policy）。iters はロールアウト本数。
+  // 初手は粗選別なしの全候補直当てなので1〜2時間級（KKハンド検証で合意した設定、2026-08）。
+  deep: { initial: 140, street: 140, ev: 3000 },
 }
 
 /** 精度「解析」では固定方針なしの逐次最適ロールアウトで評価する。 */
@@ -108,9 +108,14 @@ function futureModelFor(precision: Precision): 'rollout' | undefined {
   return precision === 'deep' ? 'rollout' : undefined
 }
 
-/** 解析の rollout 内側モンテカルロ反復数（既定16から増量。勉強用途・時間無制限の合意設計）。 */
+/** 解析の rollout 内側モンテカルロ反復数（勉強用途・時間無制限の合意設計）。 */
 function rolloutInnerFor(precision: Precision): number | undefined {
-  return precision === 'deep' ? 48 : undefined
+  return precision === 'deep' ? 24 : undefined
+}
+
+/** 解析の rollout 末端モデル。policy = 文脈つきチェイス方針（KKハンド検証で参考ソルバーと順位一致）。 */
+function rolloutLeafFor(precision: Precision): 'policy' | undefined {
+  return precision === 'deep' ? 'policy' : undefined
 }
 
 /** 対戦モードの完了ラウンド数（0 = 未配置, 1 = 初手済, 2..5 = 各ストリート済）。 */
@@ -596,6 +601,7 @@ export default function App() {
               iters: iters.initial,
               futureModel: futureModelFor(precision),
               rolloutInner: rolloutInnerFor(precision),
+              rolloutLeaf: rolloutLeafFor(precision),
             },
             setSuggProgress,
           )
@@ -609,6 +615,7 @@ export default function App() {
               iters: iters.street,
               futureModel: futureModelFor(precision),
               rolloutInner: rolloutInnerFor(precision),
+              rolloutLeaf: rolloutLeafFor(precision),
             },
             setSuggProgress,
           )

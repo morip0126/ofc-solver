@@ -257,6 +257,8 @@ export interface SuggestInitialParams {
   futureModel?: FutureModel
   /** rollout の内側モンテカルロ反復数（解析精度で増量する）。 */
   rolloutInner?: number
+  /** rollout の末端見積もりモデル（解析は 'policy'）。 */
+  rolloutLeaf?: 'streets' | 'policy'
 }
 
 /**
@@ -269,7 +271,7 @@ export function suggestInitialParallel(
   params: SuggestInitialParams,
   onProgress?: (frac: number) => void,
 ): PoolTask<SuggestionDTO[]> {
-  const { cards, dead, variantId, jokers, iters, futureModel, rolloutInner } = params
+  const { cards, dead, variantId, jokers, iters, futureModel, rolloutInner, rolloutLeaf } = params
   const boards = generateInitialBoards(cards)
   const cardCodes = cards.map(cardToString)
   const deadCodes = dead.map(cardToString)
@@ -295,6 +297,7 @@ export function suggestInitialParallel(
     seed: chunkSeed,
     futureModel: model,
     rolloutInner,
+    rolloutLeaf,
   })
 
   const run = async (): Promise<SuggestionDTO[]> => {
@@ -361,6 +364,7 @@ export interface SuggestStreetParams {
   iters: number
   futureModel?: FutureModel
   rolloutInner?: number
+  rolloutLeaf?: 'streets' | 'policy'
 }
 
 /** ストリート手の推奨（候補をプール全体へ分割評価）。 */
@@ -368,7 +372,7 @@ export function suggestStreetParallel(
   params: SuggestStreetParams,
   onProgress?: (frac: number) => void,
 ): PoolTask<SuggestionDTO[]> {
-  const { board, drawn, dead, variantId, jokers, iters, futureModel, rolloutInner } = params
+  const { board, drawn, dead, variantId, jokers, iters, futureModel, rolloutInner, rolloutLeaf } = params
   const candidates = generateStreetBoards(board, drawn)
   const dto = boardDTO(board)
   const drawnCodes = drawn.map(cardToString)
@@ -401,6 +405,7 @@ export function suggestStreetParallel(
       seed,
       futureModel,
       rolloutInner,
+      rolloutLeaf,
     } satisfies WorkerRequest,
   }))
   const inner = runChunks(specs, (d, t) => onProgress?.(t > 0 ? d / t : 0))

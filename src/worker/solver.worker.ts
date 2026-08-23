@@ -99,6 +99,7 @@ export type WorkerRequest =
       futureModel?: FutureModel
       /** rollout の内側モンテカルロ反復数（解析精度で増量する）。 */
       rolloutInner?: number
+      rolloutLeaf?: 'streets' | 'policy'
     }
   | {
       id: number
@@ -113,6 +114,7 @@ export type WorkerRequest =
       jokers?: boolean
       futureModel?: FutureModel
       rolloutInner?: number
+      rolloutLeaf?: 'streets' | 'policy'
     }
 
 export type WorkerResponse =
@@ -236,6 +238,7 @@ self.onmessage = (e: MessageEvent<WorkerRequest>) => {
             jokers: msg.jokers,
             futureModel: msg.futureModel,
             rolloutInner: msg.rolloutInner,
+            rolloutLeaf: msg.rolloutLeaf,
             onProgress: progressReporter(msg.id),
           },
         )
@@ -255,6 +258,7 @@ self.onmessage = (e: MessageEvent<WorkerRequest>) => {
             jokers: msg.jokers,
             futureModel: msg.futureModel,
             rolloutInner: msg.rolloutInner,
+            rolloutLeaf: msg.rolloutLeaf,
             onProgress: progressReporter(msg.id),
           },
         )
