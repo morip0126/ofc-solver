@@ -1436,6 +1436,19 @@ export function suggestInitial5(
 ): BoardSuggestion[] {
   const { iters = 120, refineTopK = 10, onProgress, ...rest } = options
   const boards = generateInitialBoards(cards)
+
+  if (rest.futureModel === 'rollout') {
+    // 解析: 粗選別なしで全候補を rollout 直当て（粗選別モデルの後知恵バイアスで
+    // 真の上位が精評価前に落ちるのを防ぐ。ユーザー合意の設計、2026-08）。
+    const all = boards.map((board, i) => {
+      onProgress?.(i, boards.length)
+      return { board, ...evaluateBoard(board, dead, variant, { ...rest, iters }) }
+    })
+    all.sort((a, b) => b.score - a.score)
+    onProgress?.(boards.length, boards.length)
+    return all
+  }
+
   const coarseIters = Math.max(8, Math.round(iters / 8))
   const total = boards.length + refineTopK
 
