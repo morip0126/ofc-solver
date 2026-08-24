@@ -805,6 +805,12 @@ export interface BoardMetric {
   flBreakdown: Record<number, number>
   /** 総合スコア = 期待ロイヤリティ + FL期待価値 - foulWeight*ファウル率。 */
   score: number
+  /**
+   * score のサンプル分散（1プレイアウトあたりの寄与 c = ファウルなら -foulWeight,
+   * 非ファウルなら royalties + FL価値 の分散）。SE = sqrt(scoreVar / iters)。
+   * レーシング（逐次淘汰）の脱落判定に使う。combined のトップ確定ブレンド経路では未定義。
+   */
+  scoreVar?: number
 }
 
 export interface RankOptions {
@@ -1236,6 +1242,8 @@ export function evaluateBoard(
   let flCount = 0
   let flValueSum = 0
   let foulCount = 0
+  let contribSum = 0
+  let contribSum2 = 0
   const flCounts: Record<number, number> = {}
   let n = 0
   const future: Card[] = []
@@ -1315,16 +1323,23 @@ export function evaluateBoard(
     }
     if (!best) continue
     n++
+    let contrib: number
     if (best.evaluated.fouled) {
       foulCount++
+      contrib = -foulWeight
     } else {
       royaltySum += best.royalties
+      contrib = best.royalties
       if (best.fantasylandCards > 0) {
         flCount++
-        flValueSum += flValueOf(best.fantasylandCards)
+        const fv = flValueOf(best.fantasylandCards)
+        flValueSum += fv
+        contrib += fv
         flCounts[best.fantasylandCards] = (flCounts[best.fantasylandCards] ?? 0) + 1
       }
     }
+    contribSum += contrib
+    contribSum2 += contrib * contrib
   }
 
   if (nLock > 0) {
@@ -1358,6 +1373,7 @@ export function evaluateBoard(
   const foulProb = n > 0 ? foulCount / n : 0
   const flBreakdown: Record<number, number> = {}
   if (n > 0) for (const [k, v] of Object.entries(flCounts)) flBreakdown[Number(k)] = v / n
+  const contribMean = n > 0 ? contribSum / n : 0
   return {
     expRoyalty,
     flProb,
@@ -1365,6 +1381,7 @@ export function evaluateBoard(
     foulProb,
     flBreakdown,
     score: expRoyalty + flEV - foulWeight * foulProb,
+    scoreVar: n > 0 ? Math.max(0, contribSum2 / n - contribMean * contribMean) : 0,
   }
 }
 

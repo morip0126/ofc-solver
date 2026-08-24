@@ -13,10 +13,12 @@ import {
   type Card,
   type FutureModel,
   type VariantId,
+  DEFAULT_RACE_ROUNDS,
   cardToString,
   choose,
   generateInitialBoards,
   generateStreetBoards,
+  raceCandidates,
 } from '../domain'
 import type {
   BoardDTO,
@@ -302,15 +304,32 @@ export function suggestInitialParallel(
 
   const run = async (): Promise<SuggestionDTO[]> => {
     if (futureModel === 'rollout') {
-      // 解析: 全候補を rollout で直接採点（1段階）。
-      const specs = splitIndices(boards.length, solverPool.size).map((indices) => ({
-        units: indices.length,
-        req: chunkReq(indices, iters, seed, futureModel),
-      }))
-      inner = runChunks(specs, (d, t) => onProgress?.(t > 0 ? d / t : 0))
-      const metrics = chunkResults(await inner.promise)
+      // 解析: 全候補を rollout のレーシング（逐次淘汰）で採点。同じ物差しで全候補を
+      // 少しずつ測り、統計的に見込みのない候補を早期脱落させて生き残りに本数を集中する。
+      // iters=140 を基準にラウンド構成 [12,24,48,120] をスケールする（最終生存者は計 iters×1.46 本）。
+      const scale = iters / 140
+      const rounds = DEFAULT_RACE_ROUNDS.map((r) => ({ iters: Math.max(4, Math.round(r.iters * scale)) }))
+      const totalRounds = rounds.length
+      let roundBase = 0
+      const evalFn = (indices: number[], chunkIters: number, chunkSeed: number) => {
+        if (canceled) throw new CanceledError()
+        const specs = splitIndices(indices.length, solverPool.size).map((slice) => ({
+          units: slice.length,
+          req: chunkReq(slice.map((i) => indices[i]), chunkIters, chunkSeed, futureModel),
+        }))
+        const task = runChunks(specs, (d, t) =>
+          onProgress?.(roundBase + (t > 0 ? d / t : 0) / totalRounds),
+        )
+        inner = task
+        return task.promise.then(chunkResults)
+      }
+      const metrics = await raceCandidates(boards.length, evalFn, seed, {
+        rounds,
+        onRound: (r) => {
+          roundBase = r / totalRounds
+        },
+      })
       if (canceled) throw new CanceledError()
-      metrics.sort((a, b) => b.score - a.score)
       onProgress?.(1)
       return metrics.slice(0, TOP_N).map((m) => toSuggestionDTO(boards[m.index], undefined, m))
     }
