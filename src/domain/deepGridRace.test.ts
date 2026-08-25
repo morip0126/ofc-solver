@@ -16,6 +16,9 @@ import { ULTIMATE } from './variants'
 
 const RUN = process.env.RACE_KK === '1'
 const CACHE_DIR = process.env.RACE_KK_DIR ?? '/tmp/raceKK-cache'
+// 縮小実行用: ラウンド本数（カンマ区切り）と rollout 内側反復数。既定はフル忠実度。
+const ROUNDS = (process.env.RACE_KK_ROUNDS ?? '12,24,48,120').split(',').map(Number)
+const INNER = Number(process.env.RACE_KK_INNER ?? 24)
 
 describe('deep grid racing: KK reference hand (set RACE_KK=1 to run)', () => {
   it.skipIf(!RUN)('race all initial candidates with rollout/policy leaf', async () => {
@@ -48,7 +51,7 @@ describe('deep grid racing: KK reference hand (set RACE_KK=1 to run)', () => {
         seed,
         jokers: true,
         futureModel: 'rollout',
-        rolloutInner: 24,
+        rolloutInner: INNER,
         rolloutLeaf: 'policy',
       })
       writeFileSync(cacheFile, JSON.stringify({ indices, results }))
@@ -56,6 +59,7 @@ describe('deep grid racing: KK reference hand (set RACE_KK=1 to run)', () => {
     }
 
     const result = await raceCandidates(boards.length, evalFn, 0xace1, {
+      rounds: ROUNDS.map((iters) => ({ iters })),
       onRound: (r, alive, unitsDone) =>
         log(
           `round ${r}: alive=${alive} units=${unitsDone} (${Math.round((Date.now() - t0) / 1000)}s)`,
