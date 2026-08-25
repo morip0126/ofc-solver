@@ -848,6 +848,11 @@ export interface RankOptions {
   /** 'rollout' の各ストリート手選択に使う内側モンテカルロの反復数（既定 6）。 */
   rolloutInner?: number
   /**
+   * combined のトップ確定型2アームブレンドの定数上書き（較正実験用）。
+   * λ = max × clamp((threshold − 最適アームfoul率) / span, 0, 1)。既定 {0.35, 0.15, 0.5}。
+   */
+  lockBlend?: { threshold?: number; span?: number; max?: number }
+  /**
    * 'rollout' の内側見積もりに使う末端モデル（既定 'streets'）。
    * 'policy' は文脈つきのチェイス方針で未来を見ない（streets の静的捨て+後知恵配置の
    * 保守バイアスを避けたいときに使う。KKハンド比較の壁打ち検証用、2026-08）。
@@ -1347,7 +1352,10 @@ export function evaluateBoard(
     // 緩い型は素朴アームを 50% まで混ぜる（実プレイヤーの中位品質の近似。
     // 参考グリッドの T[KK] 系3形状すべてに一致するよう較正した連続関数）。
     const fa = lockA.foul / nLock
-    const lam = 0.5 * Math.min(1, Math.max(0, (0.35 - fa) / 0.15))
+    const lbThreshold = options.lockBlend?.threshold ?? 0.35
+    const lbSpan = options.lockBlend?.span ?? 0.15
+    const lbMax = options.lockBlend?.max ?? 0.5
+    const lam = lbMax * Math.min(1, Math.max(0, (lbThreshold - fa) / lbSpan))
     const mix = (x: number, y: number) => ((1 - lam) * x + lam * y) / nLock
     const foulProb = mix(lockA.foul, lockB.foul)
     const expRoyalty = mix(lockA.roy, lockB.roy)
