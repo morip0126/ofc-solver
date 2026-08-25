@@ -13,10 +13,12 @@ import {
   type Card,
   type FutureModel,
   type VariantId,
+  DEFAULT_RACE_ROUNDS,
   cardToString,
   choose,
   generateInitialBoards,
   generateStreetBoards,
+  raceCandidates,
 } from '../domain'
 import type {
   BoardDTO,
@@ -255,23 +257,24 @@ export interface SuggestInitialParams {
   iters: number
   /** 精評価段に使う未来モデル（省略時は evaluateBoard の既定 'policy'）。 */
   futureModel?: FutureModel
+  /** rollout の内側モンテカルロ反復数（解析精度で増量する）。 */
+  rolloutInner?: number
+  /** rollout の末端見積もりモデル（解析は 'policy'）。 */
+  rolloutLeaf?: 'streets' | 'policy'
 }
 
 /**
- * 初手5枚の推奨（2段階モンテカルロをプール全体へ分割）。
- * 1次: 全候補を荒い反復で並列評価 → 2次: 上位 REFINE_TOP_K のみ本反復で精評価。
+ * 初手5枚の推奨。
+ * 通常: 2段階モンテカルロ（1次: 全候補を荒い反復で並列評価 → 2次: 上位 REFINE_TOP_K のみ精評価）。
+ * rollout（解析）: 粗選別なしで全候補を rollout 直当て。粗選別モデル（streets）の後知恵バイアスで
+ * 真の上位候補が精評価前に落ちるのを防ぐ（ユーザー合意の設計、2026-08）。
  */
 export function suggestInitialParallel(
   params: SuggestInitialParams,
   onProgress?: (frac: number) => void,
 ): PoolTask<SuggestionDTO[]> {
-  const { cards, dead, variantId, jokers, iters, futureModel } = params
+  const { cards, dead, variantId, jokers, iters, futureModel, rolloutInner, rolloutLeaf } = params
   const boards = generateInitialBoards(cards)
-  // rollout の精評価は1本あたりが重い分、粗選別を厚くして取りこぼしを防ぐ。
-  const coarseIters =
-    futureModel === 'rollout' ? Math.max(120, Math.round(iters / 2)) : Math.max(8, Math.round(iters / 8))
-  const refineTopK = futureModel === 'rollout' ? 16 : REFINE_TOP_K
-  const totalUnits = boards.length + refineTopK
   const cardCodes = cards.map(cardToString)
   const deadCodes = dead.map(cardToString)
   const seed = hashSeed('initial', cardCodes.join(), deadCodes.join(), variantId, jokers, iters, futureModel ?? '')
@@ -295,15 +298,48 @@ export function suggestInitialParallel(
     iters: chunkIters,
     seed: chunkSeed,
     futureModel: model,
+    rolloutInner,
+    rolloutLeaf,
   })
 
   const run = async (): Promise<SuggestionDTO[]> => {
-    // 粗選別は精評価と選好が揃うモデルで行う（rollout の粗選別に policy を使うと
-    // FLチェイス寄りの候補ばかりが精評価に残り、真の上位を取りこぼす）。
-    const coarseModel = futureModel === 'rollout' ? 'streets' : undefined
+    if (futureModel === 'rollout') {
+      // 解析: 全候補を rollout のレーシング（逐次淘汰）で採点。同じ物差しで全候補を
+      // 少しずつ測り、統計的に見込みのない候補を早期脱落させて生き残りに本数を集中する。
+      // iters=140 を基準にラウンド構成 [12,24,48,120] をスケールする（最終生存者は計 iters×1.46 本）。
+      const scale = iters / 140
+      const rounds = DEFAULT_RACE_ROUNDS.map((r) => ({ iters: Math.max(4, Math.round(r.iters * scale)) }))
+      const totalRounds = rounds.length
+      let roundBase = 0
+      const evalFn = (indices: number[], chunkIters: number, chunkSeed: number) => {
+        if (canceled) throw new CanceledError()
+        const specs = splitIndices(indices.length, solverPool.size).map((slice) => ({
+          units: slice.length,
+          req: chunkReq(slice.map((i) => indices[i]), chunkIters, chunkSeed, futureModel),
+        }))
+        const task = runChunks(specs, (d, t) =>
+          onProgress?.(roundBase + (t > 0 ? d / t : 0) / totalRounds),
+        )
+        inner = task
+        return task.promise.then(chunkResults)
+      }
+      const metrics = await raceCandidates(boards.length, evalFn, seed, {
+        rounds,
+        onRound: (r) => {
+          roundBase = r / totalRounds
+        },
+      })
+      if (canceled) throw new CanceledError()
+      onProgress?.(1)
+      return metrics.slice(0, TOP_N).map((m) => toSuggestionDTO(boards[m.index], undefined, m))
+    }
+
+    const coarseIters = Math.max(8, Math.round(iters / 8))
+    const refineTopK = REFINE_TOP_K
+    const totalUnits = boards.length + refineTopK
     const coarseSpecs = splitIndices(boards.length, solverPool.size).map((indices) => ({
       units: indices.length,
-      req: chunkReq(indices, coarseIters, seed, coarseModel),
+      req: chunkReq(indices, coarseIters, seed),
     }))
     inner = runChunks(coarseSpecs, (d) => onProgress?.(d / totalUnits))
     const coarse = chunkResults(await inner.promise)
@@ -346,6 +382,8 @@ export interface SuggestStreetParams {
   jokers: boolean
   iters: number
   futureModel?: FutureModel
+  rolloutInner?: number
+  rolloutLeaf?: 'streets' | 'policy'
 }
 
 /** ストリート手の推奨（候補をプール全体へ分割評価）。 */
@@ -353,7 +391,7 @@ export function suggestStreetParallel(
   params: SuggestStreetParams,
   onProgress?: (frac: number) => void,
 ): PoolTask<SuggestionDTO[]> {
-  const { board, drawn, dead, variantId, jokers, iters, futureModel } = params
+  const { board, drawn, dead, variantId, jokers, iters, futureModel, rolloutInner, rolloutLeaf } = params
   const candidates = generateStreetBoards(board, drawn)
   const dto = boardDTO(board)
   const drawnCodes = drawn.map(cardToString)
@@ -385,6 +423,8 @@ export function suggestStreetParallel(
       iters,
       seed,
       futureModel,
+      rolloutInner,
+      rolloutLeaf,
     } satisfies WorkerRequest,
   }))
   const inner = runChunks(specs, (d, t) => onProgress?.(t > 0 ? d / t : 0))

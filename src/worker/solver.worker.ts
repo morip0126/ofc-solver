@@ -97,6 +97,9 @@ export type WorkerRequest =
       seed: number
       jokers?: boolean
       futureModel?: FutureModel
+      /** rollout の内側モンテカルロ反復数（解析精度で増量する）。 */
+      rolloutInner?: number
+      rolloutLeaf?: 'streets' | 'policy'
     }
   | {
       id: number
@@ -110,6 +113,8 @@ export type WorkerRequest =
       seed: number
       jokers?: boolean
       futureModel?: FutureModel
+      rolloutInner?: number
+      rolloutLeaf?: 'streets' | 'policy'
     }
 
 export type WorkerResponse =
@@ -202,8 +207,8 @@ self.onmessage = (e: MessageEvent<WorkerRequest>) => {
         // リステイボーナス既定値 = 実測した V(14)（デッキに応じて 52枚用 / ジョーカー入り用）。
         const flCards = parseCards(msg.cards)
         const results = solveFantasyland(flCards, variant, {
-          // 同枚数維持ルール: リステイボーナス = V(現在のFL枚数)
-          stayBonus: msg.stayBonus ?? stayBonusFor(flCards.length, msg.jokers ?? false),
+          // リステイボーナス = 種類のリステイ枚数ルールに従った V（同枚数維持なら V(n)、14枚戻りなら V(14)）
+          stayBonus: msg.stayBonus ?? stayBonusFor(flCards.length, msg.jokers ?? false, variant),
           topK: msg.topK ?? 3,
           bottomRange: msg.bottomRange,
         })
@@ -232,6 +237,8 @@ self.onmessage = (e: MessageEvent<WorkerRequest>) => {
             seed: msg.seed,
             jokers: msg.jokers,
             futureModel: msg.futureModel,
+            rolloutInner: msg.rolloutInner,
+            rolloutLeaf: msg.rolloutLeaf,
             onProgress: progressReporter(msg.id),
           },
         )
@@ -250,6 +257,8 @@ self.onmessage = (e: MessageEvent<WorkerRequest>) => {
             seed: msg.seed,
             jokers: msg.jokers,
             futureModel: msg.futureModel,
+            rolloutInner: msg.rolloutInner,
+            rolloutLeaf: msg.rolloutLeaf,
             onProgress: progressReporter(msg.id),
           },
         )

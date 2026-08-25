@@ -306,11 +306,36 @@ export const DEFAULT_FL_VALUES_JOKER: Readonly<Record<number, number>> = {
 }
 
 /**
+ * プログレッシブ（突入時のみ枚数増、リステイは14枚に戻る）用の FL 期待価値。
+ * 同じ実測量（S_FL, S_N, pStay, pEntry）から解析的に導出:
+ *   μ = S_N + E_N,  V(14) = (S_FL(14) − μ)/(1 − pStay(14)),
+ *   V(n≥15) = (S_FL(n) − μ) + pStay(n)・V(14),  E_N = Σ pEntry(k)・V(k) の不動点。
+ * 15〜17枚はリステイしても14枚連鎖に落ちるため、同枚数維持ルールより価値が小さい。
+ */
+export const PROGRESSIVE_FL_VALUES: Readonly<Record<number, number>> = {
+  14: 11.1,
+  15: 17.2,
+  16: 23.4,
+  17: 30.5,
+}
+
+export const PROGRESSIVE_FL_VALUES_JOKER: Readonly<Record<number, number>> = {
+  14: 11.6,
+  15: 18.8,
+  16: 25.6,
+  17: 31.6,
+}
+
+/**
  * リステイの目的関数ボーナス = V(現在のFL枚数)。リステイは同じ枚数を維持するルームルール
  * なので、いま打っているFLの枚数が大きいほどリステイの価値が高い（17枚なら126点）。
  * 13枚FL（参考ルール）は V(14) で近似する。
  */
-export function stayBonusFor(flCards: number, jokers: boolean): number {
+export function stayBonusFor(flCards: number, jokers: boolean, variant?: Variant): number {
+  // プログレッシブはリステイで14枚に戻るため、ボーナスは常に V(14)。
+  if (variant && !variant.restayKeepsCount) {
+    return (jokers ? PROGRESSIVE_FL_VALUES_JOKER : PROGRESSIVE_FL_VALUES)[14]
+  }
   const table = jokers ? DEFAULT_FL_VALUES_JOKER : DEFAULT_FL_VALUES
   return table[Math.min(17, Math.max(14, flCards))] ?? table[14]
 }
@@ -352,9 +377,9 @@ export function solveFantasyland(
 ): FantasylandResult[] {
   const n = cards.length
   if (n < 13 || n > 17) throw new Error(`solveFantasyland expects 13..17 cards, got ${n}`)
-  // 既定のリステイボーナスは「同枚数維持ルール」に基づき V(現在の枚数)（52枚テーブル）。
-  // ジョーカー入りは呼び出し側が stayBonusFor(n, true) を渡すこと（worker は対応済み）。
-  const { stayBonus = stayBonusFor(n, false), topK = 3, bottomRange } = options
+  // 既定のリステイボーナス = stayBonusFor（種類のリステイ枚数ルールに従う。52枚テーブル）。
+  // ジョーカー入りは呼び出し側が stayBonusFor(n, true, variant) を渡すこと（worker は対応済み）。
+  const { stayBonus = stayBonusFor(n, false, variant), topK = 3, bottomRange } = options
 
   const fives = prepFives(cards)
   const tops = prepTops(cards)
@@ -780,6 +805,12 @@ export interface BoardMetric {
   flBreakdown: Record<number, number>
   /** 総合スコア = 期待ロイヤリティ + FL期待価値 - foulWeight*ファウル率。 */
   score: number
+  /**
+   * score のサンプル分散（1プレイアウトあたりの寄与 c = ファウルなら -foulWeight,
+   * 非ファウルなら royalties + FL価値 の分散）。SE = sqrt(scoreVar / iters)。
+   * レーシング（逐次淘汰）の脱落判定に使う。combined のトップ確定ブレンド経路では未定義。
+   */
+  scoreVar?: number
 }
 
 export interface RankOptions {
@@ -817,6 +848,17 @@ export interface RankOptions {
   /** 'rollout' の各ストリート手選択に使う内側モンテカルロの反復数（既定 6）。 */
   rolloutInner?: number
   /**
+   * combined のトップ確定型2アームブレンドの定数上書き（較正実験用）。
+   * λ = max × clamp((threshold − 最適アームfoul率) / span, 0, 1)。既定 {0.35, 0.15, 0.5}。
+   */
+  lockBlend?: { threshold?: number; span?: number; max?: number }
+  /**
+   * 'rollout' の内側見積もりに使う末端モデル（既定 'streets'）。
+   * 'policy' は文脈つきのチェイス方針で未来を見ない（streets の静的捨て+後知恵配置の
+   * 保守バイアスを避けたいときに使う。KKハンド比較の壁打ち検証用、2026-08）。
+   */
+  rolloutLeaf?: 'streets' | 'policy'
+  /**
    * policy/combined のトップ・コミットを攻撃的にする（実験用）: ジョーカーをトップに
    * 投入してペア/トリップスを作りに行き、トリップス化の許容ストリートも広げる。
    * 参考ソルバーのプレイヤー像（トリップスFL重視・高ファウル）の再現用。
@@ -852,7 +894,15 @@ export function evaluateBoard(
   // （デッキに応じて 52枚用 / ジョーカー入り用を選ぶ）。hindsight / combined モデルは
   // 参考ソルバーの FL 重視の価値付けに合わせてスケールする。
   const baseFlValues =
-    flWeight !== undefined ? undefined : jokers ? DEFAULT_FL_VALUES_JOKER : DEFAULT_FL_VALUES
+    flWeight !== undefined
+      ? undefined
+      : variant.restayKeepsCount
+        ? jokers
+          ? DEFAULT_FL_VALUES_JOKER
+          : DEFAULT_FL_VALUES
+        : jokers
+          ? PROGRESSIVE_FL_VALUES_JOKER
+          : PROGRESSIVE_FL_VALUES
   const flValues =
     options.flValues ??
     (baseFlValues && futureModel === 'hindsight'
@@ -1141,6 +1191,7 @@ export function evaluateBoard(
    * （futureModel:'streets'、軽量）で採点して最良を選ぶ。固定方針なし・後知恵なし。
    */
   const rolloutInner = options.rolloutInner ?? 16
+  const rolloutLeaf = options.rolloutLeaf ?? 'streets'
   const rolloutBest = (): ScoredArrangement | null => {
     const cur: Board = { top: [...board.top], middle: [...board.middle], bottom: [...board.bottom] }
     const curDead: Card[] = [...dead]
@@ -1161,7 +1212,7 @@ export function evaluateBoard(
           flValues,
           foulWeight,
           jokers,
-          futureModel: 'streets',
+          futureModel: rolloutLeaf,
         })
         if (m.score > bestScore) {
           bestScore = m.score
@@ -1196,6 +1247,8 @@ export function evaluateBoard(
   let flCount = 0
   let flValueSum = 0
   let foulCount = 0
+  let contribSum = 0
+  let contribSum2 = 0
   const flCounts: Record<number, number> = {}
   let n = 0
   const future: Card[] = []
@@ -1275,16 +1328,23 @@ export function evaluateBoard(
     }
     if (!best) continue
     n++
+    let contrib: number
     if (best.evaluated.fouled) {
       foulCount++
+      contrib = -foulWeight
     } else {
       royaltySum += best.royalties
+      contrib = best.royalties
       if (best.fantasylandCards > 0) {
         flCount++
-        flValueSum += flValueOf(best.fantasylandCards)
+        const fv = flValueOf(best.fantasylandCards)
+        flValueSum += fv
+        contrib += fv
         flCounts[best.fantasylandCards] = (flCounts[best.fantasylandCards] ?? 0) + 1
       }
     }
+    contribSum += contrib
+    contribSum2 += contrib * contrib
   }
 
   if (nLock > 0) {
@@ -1292,7 +1352,10 @@ export function evaluateBoard(
     // 緩い型は素朴アームを 50% まで混ぜる（実プレイヤーの中位品質の近似。
     // 参考グリッドの T[KK] 系3形状すべてに一致するよう較正した連続関数）。
     const fa = lockA.foul / nLock
-    const lam = 0.5 * Math.min(1, Math.max(0, (0.35 - fa) / 0.15))
+    const lbThreshold = options.lockBlend?.threshold ?? 0.35
+    const lbSpan = options.lockBlend?.span ?? 0.15
+    const lbMax = options.lockBlend?.max ?? 0.5
+    const lam = lbMax * Math.min(1, Math.max(0, (lbThreshold - fa) / lbSpan))
     const mix = (x: number, y: number) => ((1 - lam) * x + lam * y) / nLock
     const foulProb = mix(lockA.foul, lockB.foul)
     const expRoyalty = mix(lockA.roy, lockB.roy)
@@ -1318,6 +1381,7 @@ export function evaluateBoard(
   const foulProb = n > 0 ? foulCount / n : 0
   const flBreakdown: Record<number, number> = {}
   if (n > 0) for (const [k, v] of Object.entries(flCounts)) flBreakdown[Number(k)] = v / n
+  const contribMean = n > 0 ? contribSum / n : 0
   return {
     expRoyalty,
     flProb,
@@ -1325,6 +1389,7 @@ export function evaluateBoard(
     foulProb,
     flBreakdown,
     score: expRoyalty + flEV - foulWeight * foulProb,
+    scoreVar: n > 0 ? Math.max(0, contribSum2 / n - contribMean * contribMean) : 0,
   }
 }
 
@@ -1403,6 +1468,19 @@ export function suggestInitial5(
 ): BoardSuggestion[] {
   const { iters = 120, refineTopK = 10, onProgress, ...rest } = options
   const boards = generateInitialBoards(cards)
+
+  if (rest.futureModel === 'rollout') {
+    // 解析: 粗選別なしで全候補を rollout 直当て（粗選別モデルの後知恵バイアスで
+    // 真の上位が精評価前に落ちるのを防ぐ。ユーザー合意の設計、2026-08）。
+    const all = boards.map((board, i) => {
+      onProgress?.(i, boards.length)
+      return { board, ...evaluateBoard(board, dead, variant, { ...rest, iters }) }
+    })
+    all.sort((a, b) => b.score - a.score)
+    onProgress?.(boards.length, boards.length)
+    return all
+  }
+
   const coarseIters = Math.max(8, Math.round(iters / 8))
   const total = boards.length + refineTopK
 

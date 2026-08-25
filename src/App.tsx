@@ -12,6 +12,7 @@ import {
   fantasylandCards,
   makeDeck,
   parseCards,
+  remainingDeck,
   royaltiesTotal,
   scoreEvaluated,
   scoreMultiEvaluated,
@@ -34,16 +35,20 @@ import {
   suggestStreetParallel,
 } from './worker/solverClient'
 import {
+  type DrillStats,
   type Precision,
   type VsPlayerStats,
   type VsPosStats,
   type VsStats,
   type VsStatsByConfig,
   detectLang,
+  emptyDrillStats,
   emptyVsStats,
+  loadDrillStats,
   loadGame,
   loadSettings,
   loadVsStatsByConfig,
+  saveDrillStats,
   saveGame,
   saveSettings,
   saveVsStatsByConfig,
@@ -58,7 +63,10 @@ interface PB {
   bottom: Card[]
 }
 
-type Mode = 'play' | 'fl' | 'vs'
+type Mode = 'play' | 'fl' | 'vs' | 'drill'
+
+// ドリルモードの固定シナリオ: 例のKKハンド（アルティメット・ジョーカー入り54枚）。
+const DRILL_CARDS = parseCards('Kd Kh 6d 5h 3h')
 
 type Target =
   | { kind: 'pool' }
@@ -98,13 +106,24 @@ const PRECISION_ITERS: Record<Precision, { initial: number; street: number; ev: 
   standard: { initial: 100, street: 130, ev: 400 },
   high: { initial: 280, street: 350, ev: 1200 },
   ultra: { initial: 700, street: 900, ev: 3000 },
-  // 解析: 逐次最適プレイのロールアウト（rollout モデル）。iters はロールアウト本数。
-  deep: { initial: 280, street: 280, ev: 3000 },
+  // 解析: 逐次最適プレイのロールアウト（rollout モデル、末端 policy）。iters はロールアウト本数。
+  // 初手は粗選別なしの全候補直当てなので1〜2時間級（KKハンド検証で合意した設定、2026-08）。
+  deep: { initial: 140, street: 140, ev: 3000 },
 }
 
 /** 精度「解析」では固定方針なしの逐次最適ロールアウトで評価する。 */
 function futureModelFor(precision: Precision): 'rollout' | undefined {
   return precision === 'deep' ? 'rollout' : undefined
+}
+
+/** 解析の rollout 内側モンテカルロ反復数（勉強用途・時間無制限の合意設計）。 */
+function rolloutInnerFor(precision: Precision): number | undefined {
+  return precision === 'deep' ? 24 : undefined
+}
+
+/** 解析の rollout 末端モデル。policy = 文脈つきチェイス方針（KKハンド検証で参考ソルバーと順位一致）。 */
+function rolloutLeafFor(precision: Precision): 'policy' | undefined {
+  return precision === 'deep' ? 'policy' : undefined
 }
 
 /** 対戦モードの完了ラウンド数（0 = 未配置, 1 = 初手済, 2..5 = 各ストリート済）。 */
@@ -173,6 +192,14 @@ export default function App() {
   const [vsBusy, setVsBusy] = useState(false)
   const [vsError, setVsError] = useState<string | null>(null)
   const [vsStatsAll, setVsStatsAll] = useState<VsStatsByConfig>(() => loadVsStatsByConfig())
+
+  // ---- ドリルモード（KKハンド自己テスト）----
+  // 山札は1ハンド分を配り切りで保持し、pool は heroCount から決まる位置のスライス
+  // （デッキが進まないので取り消しとも整合する）。成績は localStorage に通算保存。
+  const [drillDeck, setDrillDeck] = useState<Card[]>([])
+  const [drillScored, setDrillScored] = useState(false)
+  const [drillLast, setDrillLast] = useState<{ fouled: boolean; royalties: number; fl: number } | null>(null)
+  const [drillStats, setDrillStats] = useState<DrillStats>(() => loadDrillStats())
 
   const suggTask = useRef<PoolTask<SuggestionDTO[]> | null>(null)
   const flTask = useRef<PoolTask<FLResultDTO[]> | null>(null)
@@ -303,13 +330,16 @@ export default function App() {
     setVsPendingHeroFL(0)
     setVsPendingVillainFL(0)
     setVsError(null)
+    setDrillDeck([])
+    setDrillScored(false)
+    setDrillLast(null)
   }, [])
 
   const setMode = useCallback(
     (m: Mode) => {
       if (m === mode) return
-      // 対戦モードは専用のデッキ進行を持つため、跨ぐ切替では盤面をクリアする。
-      if (m === 'vs' || mode === 'vs') {
+      // 対戦・ドリルは専用のデッキ進行を持つため、跨ぐ切替では盤面をクリアする。
+      if (m === 'vs' || mode === 'vs' || m === 'drill' || mode === 'drill') {
         if (usedIds.size > 0 && !window.confirm(t(lang, 'confirmModeSwitch'))) return
         clearAll()
       }
@@ -365,8 +395,8 @@ export default function App() {
 
   const onPickerToggle = useCallback(
     (card: Card) => {
-      // 対戦モードでは配牌は自動なので手動での追加/取り除きは無効。
-      if (mode === 'vs') return
+      // 対戦・ドリルでは配牌は自動なので手動での追加/取り除きは無効。
+      if (mode === 'vs' || mode === 'drill') return
       const id = cardId(card)
       if (usedIds.has(id)) {
         // どこにあっても取り除く
@@ -589,6 +619,8 @@ export default function App() {
               jokers: useJokers,
               iters: iters.initial,
               futureModel: futureModelFor(precision),
+              rolloutInner: rolloutInnerFor(precision),
+              rolloutLeaf: rolloutLeafFor(precision),
             },
             setSuggProgress,
           )
@@ -601,6 +633,8 @@ export default function App() {
               jokers: useJokers,
               iters: iters.street,
               futureModel: futureModelFor(precision),
+              rolloutInner: rolloutInnerFor(precision),
+              rolloutLeaf: rolloutLeafFor(precision),
             },
             setSuggProgress,
           )
@@ -705,6 +739,79 @@ export default function App() {
     setVsDeck(deck)
     setTarget({ kind: 'pool' })
   }, [useJokers, vsPendingHeroFL, vsPendingVillainFL])
+
+  // ---- ドリルモード ----
+
+  const dealDrill = useCallback(() => {
+    // 検証対象セルの固定初手: M[KdKh] B[6d5h3h]（参考ソルバー#1の配置）。
+    // 初手の配置選択はスキップし、1ストリート目の3枚から始める。
+    setHero({ top: [], middle: DRILL_CARDS.slice(0, 2), bottom: DRILL_CARDS.slice(2) })
+    setHeroDiscards([])
+    setPool([])
+    setAssign({})
+    setSelectedPoolId(null)
+    setHistory([])
+    setSugg(null)
+    setEv(null)
+    setDrillDeck(shuffle(remainingDeck(DRILL_CARDS, true)))
+    setDrillScored(false)
+    setDrillLast(null)
+    setTarget({ kind: 'pool' })
+  }, [])
+
+  const drillHandActive = mode === 'drill' && drillDeck.length > 0
+
+  // ストリートの自動配札: pool は山札の heroCount で決まる位置のスライス（純関数）なので
+  // 取り消しで盤面が戻っても整合する。
+  useEffect(() => {
+    if (!drillHandActive) return
+    if (heroCount < 5 || heroCount >= 13 || pool.length > 0) return
+    const s = Math.floor((heroCount - 5) / 2)
+    setPool(drillDeck.slice(s * 3, s * 3 + 3))
+  }, [drillHandActive, heroCount, pool.length, drillDeck])
+
+  // ハンド完成時の成績記録（アルティメット固定で判定）。
+  useEffect(() => {
+    if (!drillHandActive || drillScored || heroCount !== 13) return
+    if (hero.top.length !== 3 || hero.middle.length !== 5 || hero.bottom.length !== 5) return
+    const evaluated = evaluateArrangement(hero)
+    const fouled = evaluated.fouled
+    const royalties = fouled ? 0 : royaltiesTotal(evaluated)
+    const fl = fouled ? 0 : fantasylandCards(evaluated, VARIANTS.ultimate)
+    setDrillLast({ fouled, royalties, fl })
+    setDrillScored(true)
+    setDrillStats((s) => {
+      const entries = { ...s.entries }
+      if (fl > 0) entries[fl] = (entries[fl] ?? 0) + 1
+      const next: DrillStats = {
+        hands: s.hands + 1,
+        fouls: s.fouls + (fouled ? 1 : 0),
+        roySum: s.roySum + royalties,
+        entries,
+      }
+      saveDrillStats(next)
+      return next
+    })
+  }, [drillHandActive, drillScored, heroCount, hero])
+
+  const resetDrillStats = useCallback(() => {
+    if (drillStats.hands > 0 && !window.confirm(t(lang, 'confirmDrillReset'))) return
+    const empty = emptyDrillStats()
+    saveDrillStats(empty)
+    setDrillStats(empty)
+  }, [drillStats.hands, lang])
+
+  // 起動時にドリルモードで復元された場合、前セッションの盤面（山札なし）は捨てて白紙から。
+  useEffect(() => {
+    if (mode === 'drill') {
+      setHero(emptyBoard())
+      setHeroDiscards([])
+      setPool([])
+      setAssign({})
+      setHistory([])
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // 対戦モードの進行ドライバ。ポジションに従って山札から手札を配る。
   // 先手（OOP）が各ラウンドを先に置き、後手（IP）は相手の同ラウンド完了を見てから置く。
@@ -850,7 +957,7 @@ export default function App() {
   // 現在のルール構成（種類 × デッキ）の成績バケット。
   const vsConfig = vsConfigKey(variantId, useJokers)
   const vsStats = vsStatsAll[vsConfig] ?? emptyVsStats()
-  const vsConfigLabel = `${t(lang, variantId === 'normal' ? 'variantNormal' : 'variantUltimate')} / ${t(lang, useJokers ? 'deck54' : 'deck52')}`
+  const vsConfigLabel = `${VARIANTS[variantId].name[lang]} / ${t(lang, useJokers ? 'deck54' : 'deck52')}`
 
   const resetVsStats = useCallback(() => {
     setVsStatsAll((all) => {
@@ -867,10 +974,12 @@ export default function App() {
     if (mode === 'fl' || heroCount !== 13) return null
     if (hero.top.length !== 3 || hero.middle.length !== 5 || hero.bottom.length !== 5) return null
     const evaluated = evaluateArrangement(hero)
+    // ドリルはアルティメット固定（54枚・FL枚数もアルティメット規則で表示）。
+    const flVariant = mode === 'drill' ? VARIANTS.ultimate : variant
     return {
       evaluated,
       royalties: royaltiesTotal(evaluated),
-      flCards: fantasylandCards(evaluated, variant),
+      flCards: fantasylandCards(evaluated, flVariant),
     }
   }, [mode, heroCount, hero, variant])
 
@@ -896,8 +1005,11 @@ export default function App() {
     const vEval = evaluateArrangement(v)
     const nextFLOf = (curFL: number, e: typeof hEval, entryCards: number) => {
       if (e.fouled) return 0
-      // リステイは同じ枚数を維持するルームルール（14枚固定ではない）
-      if (curFL > 0) return variant.fantasylandStay(e.top, e.middle, e.bottom) ? curFL : 0
+      // リステイ枚数は種類のルールに従う（アルティメット=同枚数維持、プログレッシブ=14枚に戻る）
+      if (curFL > 0) {
+        if (!variant.fantasylandStay(e.top, e.middle, e.bottom)) return 0
+        return variant.restayKeepsCount ? curFL : 14
+      }
       return entryCards
     }
     return {
@@ -991,15 +1103,21 @@ export default function App() {
       <div className="controls">
         <label className="ctrl-select">
           {t(lang, 'variant')}
-          <select value={variantId} onChange={(e) => setVariantId(e.target.value as VariantId)}>
+          <select
+            value={mode === 'drill' ? 'ultimate' : variantId}
+            disabled={mode === 'drill'}
+            onChange={(e) => setVariantId(e.target.value as VariantId)}
+          >
             <option value="normal">{t(lang, 'variantNormal')}</option>
             <option value="ultimate">{t(lang, 'variantUltimate')}</option>
+            <option value="progressive">{t(lang, 'variantProgressive')}</option>
           </select>
         </label>
         <label className="ctrl-select">
           {t(lang, 'deck')}
           <select
-            value={useJokers ? '54' : '52'}
+            value={mode === 'drill' ? '54' : useJokers ? '54' : '52'}
+            disabled={mode === 'drill'}
             onChange={(e) => setUseJokers(e.target.value === '54')}
           >
             <option value="52">{t(lang, 'deck52')}</option>
@@ -1008,7 +1126,11 @@ export default function App() {
         </label>
         <label className="ctrl-select">
           {t(lang, 'players')}
-          <select value={players} onChange={(e) => setPlayers(Number(e.target.value) as 2 | 3)}>
+          <select
+            value={players}
+            disabled={mode === 'drill'}
+            onChange={(e) => setPlayers(Number(e.target.value) as 2 | 3)}
+          >
             <option value={2}>{t(lang, 'playersHU')}</option>
             <option value={3}>{t(lang, 'players3')}</option>
           </select>
@@ -1036,6 +1158,13 @@ export default function App() {
           </button>
           <button type="button" className={mode === 'fl' ? 'on' : ''} onClick={() => setMode('fl')}>
             {t(lang, 'modeFL')}
+          </button>
+          <button
+            type="button"
+            className={mode === 'drill' ? 'on' : ''}
+            onClick={() => setMode('drill')}
+          >
+            {t(lang, 'modeDrill')}
           </button>
         </div>
         <div className="spacer" />
@@ -1070,7 +1199,25 @@ export default function App() {
         </section>
       )}
 
-      {(mode === 'play' || vsHandActive) && (
+      {mode === 'drill' && !drillHandActive && (
+        <section className="panel">
+          <div className="panel-head">
+            <span className="panel-title">{t(lang, 'modeDrill')}</span>
+          </div>
+          <p className="hint">{t(lang, 'drillIntro')}</p>
+          <button type="button" className="primary-btn" onClick={dealDrill}>
+            {t(lang, 'drillDeal')}
+          </button>
+          <DrillStatsView lang={lang} stats={drillStats} />
+          {drillStats.hands > 0 && (
+            <button type="button" className="ghost-btn vs-stats-reset" onClick={resetDrillStats}>
+              {t(lang, 'drillResetStats')}
+            </button>
+          )}
+        </section>
+      )}
+
+      {(mode === 'play' || drillHandActive || vsHandActive) && (
         <section className="panel hero-panel">
           <div className="panel-head">
             <span className="panel-title">{t(lang, 'hero')}</span>
@@ -1120,7 +1267,27 @@ export default function App() {
         </section>
       )}
 
-      {(mode === 'play' || vsHandActive) && heroCount < 13 && (
+      {mode === 'drill' && drillHandActive && drillLast && heroCount === 13 && (
+        <section className="panel">
+          <div className="panel-head">
+            <span className="panel-title">
+              {drillLast.fouled
+                ? t(lang, 'fouled')
+                : `${t(lang, 'royalties')} ${drillLast.royalties} / ${
+                    drillLast.fl > 0
+                      ? `FL ${t(lang, 'flCards', { n: drillLast.fl })}`
+                      : `FL ${t(lang, 'flNone')}`
+                  }`}
+            </span>
+          </div>
+          <button type="button" className="primary-btn" onClick={dealDrill}>
+            {t(lang, 'drillNextHand')}
+          </button>
+          <DrillStatsView lang={lang} stats={drillStats} />
+        </section>
+      )}
+
+      {(mode === 'play' || drillHandActive || vsHandActive) && heroCount < 13 && (
         <section
           className={`panel pool-panel selectable ${target.kind === 'pool' ? 'active' : ''}`}
           onClick={() => setTarget({ kind: 'pool' })}
@@ -1404,14 +1571,14 @@ export default function App() {
           {flResults.length > 0 && (
             <p className="ev-hint">
               {t(lang, 'flHint', {
-                bonus: stayBonusFor(pool.length, useJokers),
+                bonus: stayBonusFor(pool.length, useJokers, variant),
               })}
             </p>
           )}
         </section>
       )}
 
-      {mode === 'vs'
+      {mode === 'drill' ? null : mode === 'vs'
         ? vsHandActive && (
             <section className="panel villain-panel">
               <div className="panel-head">
@@ -1454,8 +1621,8 @@ export default function App() {
             </section>
           ))}
 
-      {mode !== 'vs' && <p className="hint">{t(lang, 'targetHint')}</p>}
-      {mode !== 'vs' && (
+      {mode !== 'vs' && mode !== 'drill' && <p className="hint">{t(lang, 'targetHint')}</p>}
+      {mode !== 'vs' && mode !== 'drill' && (
         <CardPicker selected={usedIds} canAdd={canAdd} onToggle={onPickerToggle} jokers={useJokers} />
       )}
     </main>
@@ -1767,6 +1934,31 @@ function VsPlayerStatsView({ lang, stats }: { lang: Lang; stats: VsStats }) {
 }
 
 /** 対戦モードの通算成績（現在のルール構成の全体 + ポジション別の内訳 + プレイヤー別詳細）。 */
+function DrillStatsView({ lang, stats }: { lang: Lang; stats: DrillStats }) {
+  if (stats.hands === 0) return null
+  const entriesTotal = Object.values(stats.entries).reduce((a, b) => a + b, 0)
+  const pct = (x: number) => `${((100 * x) / stats.hands).toFixed(1)}%`
+  const breakdown = [14, 15, 16, 17]
+    .filter((n) => (stats.entries[n] ?? 0) > 0)
+    .map((n) => `${n}:${stats.entries[n]}`)
+    .join(' ')
+  return (
+    <div className="vs-stats">
+      <span>
+        <strong>{t(lang, 'drillStatsTitle')}</strong> {t(lang, 'drillHands')} {stats.hands} /{' '}
+        {t(lang, 'drillFLRate')} {pct(entriesTotal)} / {t(lang, 'drillFoulRate')} {pct(stats.fouls)}{' '}
+        / {t(lang, 'drillRoyAvg')} {(stats.roySum / stats.hands).toFixed(2)}
+      </span>
+      {breakdown && (
+        <span>
+          {t(lang, 'drillFLBreakdown')}: {breakdown}
+        </span>
+      )}
+      <span>{t(lang, 'drillTarget')}</span>
+    </div>
+  )
+}
+
 function VsStatsView({
   lang,
   stats,
