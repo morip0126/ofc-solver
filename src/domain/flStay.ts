@@ -29,10 +29,10 @@
 // ジョーカー入りでは bottom 経由の継続が支配的になる。
 // （ネット記事等の高い継続率はジョーカー入りルールの値であることが多い。）
 
-import { type Card, makeDeck } from './cards'
+import { type Card, isJoker, makeDeck } from './cards'
 import { shuffle } from './combinatorics'
 import { HandCategory } from './evaluator'
-import { key3, key5 } from './fastEval'
+import { key3, key3AtMost, key5, key5AtMost } from './fastEval'
 
 export interface StayFeasibility {
   /** top トリップスでリステイできる配置が存在する。 */
@@ -69,8 +69,13 @@ function canFillMiddleTop(rest: readonly Card[], capKey: number): boolean {
   const others: Card[] = []
   return findCombo(n, 5, (mIdx) => {
     for (let i = 0; i < 5; i++) fiveBuf[i] = rest[mIdx[i]]
-    const mKey = key5(fiveBuf)
-    if (mKey > capKey) return false
+    let mKey = key5(fiveBuf)
+    if (mKey > capKey) {
+      // ジョーカー入りなら demote（capKey 以下で最強）を試みる
+      if (!fiveBuf.some(isJoker)) return false
+      mKey = key5AtMost(fiveBuf, capKey)
+      if (mKey < 0) return false
+    }
     // middle に使っていないカードから top ≤ middle を探す。
     others.length = 0
     let p = 0
@@ -80,7 +85,9 @@ function canFillMiddleTop(rest: readonly Card[], capKey: number): boolean {
     }
     return findCombo(others.length, 3, (tIdx) => {
       for (let i = 0; i < 3; i++) threeBuf[i] = others[tIdx[i]]
-      return key3(threeBuf) <= mKey
+      if (key3(threeBuf) <= mKey) return true
+      if (!threeBuf.some(isJoker)) return false
+      return key3AtMost(threeBuf, mKey) >= 0
     })
   })
 }

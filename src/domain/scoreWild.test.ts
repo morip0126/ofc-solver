@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { parseCards } from './cards'
 import { HandCategory } from './evaluator'
 import { evaluateArrangement, fantasylandCards } from './score'
+import { solveBest13, solveFantasyland } from './solver'
 import { ULTIMATE } from './variants'
 
 describe('joker foul-avoiding resolution', () => {
@@ -46,6 +47,24 @@ describe('joker foul-avoiding resolution', () => {
       bottom: parseCards('6d 5h 3h 3s 5c'),
     })
     expect(ev.fouled).toBe(true)
+  })
+
+  it('solveBest13 も demote 配置を発見する（ドリル実例の13枚 → KKトップ15枚FL）', () => {
+    const cards = parseCards('Ks X1 Kc Kd Kh 6h Ad 4d 6d 5h 3h 3s 5c')
+    const results = solveBest13(cards, ULTIMATE, { topK: 5, fantasylandBonus: 20 })
+    // 旧ルール（段ごと独立最大化）ではジョーカー入りトップが demote できず上位に
+    // FL 配置が出にくい。新ルールでは少なくとも15枚以上のFL（KKトップ demote や
+    // ジョーカーAAトップ等）に非ファウルで到達できるはず。
+    const fl = results.find((r) => !r.evaluated.fouled && r.fantasylandCards >= 15)
+    expect(fl).toBeDefined()
+  })
+
+  it('solveFantasyland でも demote 配置が非ファウルとして扱われる', () => {
+    // 14枚FL: ジョーカー含み。全探索が例外なく完走し、非ファウル解を返すこと。
+    const cards = parseCards('Ks X1 Kc Kd Kh 6h Ad 4d 6d 5h 3h 3s 5c 2d')
+    const results = solveFantasyland(cards, ULTIMATE, { topK: 3 })
+    expect(results.length).toBeGreaterThan(0)
+    expect(results[0].evaluated.fouled).toBe(false)
   })
 
   it('ファウルしない盤面ではジョーカーは従来通り最強化される', () => {

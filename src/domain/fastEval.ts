@@ -12,7 +12,7 @@
 //
 // 正しさは evaluator.ts / royalties.ts とのクロスチェックテスト（fastEval.test.ts）で担保する。
 
-import type { Card } from './cards'
+import { type Card, isJoker, makeDeck } from './cards'
 import { HandCategory, type HandValue } from './evaluator'
 
 /** HandValue を 24bit キーにパックする。tiebreakers は最大5つ。 */
@@ -286,6 +286,135 @@ export function key3(cards: readonly Card[]): number {
   if (y < z) { t = y; y = z; z = t }
   if (x < y) { t = x; x = y; y = t }
   return (HandCategory.HighCard << 20) | (x << 16) | (y << 12) | (z << 8)
+}
+
+// ---- 上限つき最大キー（ファウル回避のジョーカー解決） --------------------------
+//
+// ルームルール: ジョーカーは「ファウルしない置換の中で最強のカード」になる。
+// 段単体の key5/key3 は従来通り段内最大化のままとし、盤面レベルの順序制約
+// （bottom ≥ middle ≥ top）に合わせた demote はこの bounded 関数で行う。
+// 置換総当たり（1枚: ≤52通り / 2枚: ≤C(52,2)通り）だが、呼ばれるのは
+// 「独立最大化でファウル、かつその段にジョーカーがある」場合だけ。
+
+const NATURAL_DECK = makeDeck()
+const subBuf5 = new Array<Card>(5)
+const subBuf3 = new Array<Card>(3)
+
+function sameCard(a: Card, b: Card): boolean {
+  return a.rank === b.rank && a.suit === b.suit
+}
+
+function forEachSubstitution(
+  cards: readonly Card[],
+  n: 3 | 5,
+  cb: (key: number) => void,
+): number {
+  const keyFn = n === 5 ? key5 : key3
+  const buf = n === 5 ? subBuf5 : subBuf3
+  let nat = 0
+  for (let i = 0; i < n; i++) if (!isJoker(cards[i])) buf[nat++] = cards[i]
+  const jokers = n - nat
+  if (jokers === 0) return 0
+  if (jokers === 1) {
+    for (const s of NATURAL_DECK) {
+      let dup = false
+      for (let i = 0; i < nat; i++) {
+        if (sameCard(buf[i], s)) {
+          dup = true
+          break
+        }
+      }
+      if (dup) continue
+      buf[nat] = s
+      cb(keyFn(buf))
+    }
+  } else if (jokers === 2) {
+    for (let a = 0; a < NATURAL_DECK.length; a++) {
+      const sa = NATURAL_DECK[a]
+      let dupA = false
+      for (let i = 0; i < nat; i++) {
+        if (sameCard(buf[i], sa)) {
+          dupA = true
+          break
+        }
+      }
+      if (dupA) continue
+      for (let b = a + 1; b < NATURAL_DECK.length; b++) {
+        const sb = NATURAL_DECK[b]
+        let dupB = false
+        for (let i = 0; i < nat; i++) {
+          if (sameCard(buf[i], sb)) {
+            dupB = true
+            break
+          }
+        }
+        if (dupB) continue
+        buf[nat] = sa
+        buf[nat + 1] = sb
+        cb(keyFn(buf))
+      }
+    }
+  } else {
+    throw new Error(`unsupported joker count: ${jokers}`)
+  }
+  return jokers
+}
+
+/**
+ * 5枚ハンドの「bound 以下で最強」キー。不可能なら -1。
+ * ジョーカーなしのハンドにも使える（自身のキーが bound 以下ならそのキー、超えるなら -1）。
+ */
+export function key5AtMost(cards: readonly Card[], bound: number): number {
+  let best = -1
+  const jokers = forEachSubstitution(cards, 5, (k) => {
+    if (k <= bound && k > best) best = k
+  })
+  if (jokers === 0) {
+    const k = key5(cards)
+    return k <= bound ? k : -1
+  }
+  return best
+}
+
+/** 3枚（top）ハンドの「bound 以下で最強」キー。不可能なら -1。 */
+export function key3AtMost(cards: readonly Card[], bound: number): number {
+  let best = -1
+  const jokers = forEachSubstitution(cards, 3, (k) => {
+    if (k <= bound && k > best) best = k
+  })
+  if (jokers === 0) {
+    const k = key3(cards)
+    return k <= bound ? k : -1
+  }
+  return best
+}
+
+/**
+ * ジョーカー入りハンドの「達成可能キー」を昇順・重複なしで列挙する（prep 系の事前計算用）。
+ * 列挙ループ内の demote はこの配列への二分探索（keyFloor）で O(log n) になる。
+ */
+export function achievableKeys(cards: readonly Card[], n: 3 | 5): number[] {
+  const set = new Set<number>()
+  const jokers = forEachSubstitution(cards, n, (k) => set.add(k))
+  if (jokers === 0) throw new Error('achievableKeys expects a hand containing jokers')
+  return [...set].sort((a, b) => a - b)
+}
+
+/** sorted（昇順）から bound 以下の最大値を返す。無ければ -1。 */
+export function keyFloor(sorted: readonly number[], bound: number): number {
+  let lo = 0
+  let hi = sorted.length - 1
+  let ans = -1
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1
+    if (sorted[mid] <= bound) {
+      ans = sorted[mid]
+      lo = mid + 1
+    } else {
+      hi = mid - 1
+    }
+  }
+  return ans
 }
 
 // --- キーからのロイヤリティ（royalties.ts と同じ標準表。クロスチェックテストで同値性を担保） ---

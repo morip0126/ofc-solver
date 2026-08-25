@@ -17,8 +17,12 @@
 import { type Card, isJoker, remainingDeck, without } from './cards'
 import { combinations, mulberry32, shuffle } from './combinatorics'
 import {
+  achievableKeys,
   key3,
+  key3AtMost,
   key5,
+  key5AtMost,
+  keyFloor,
   royaltyBottomKey,
   royaltyMiddleKey,
   royaltyTopKey,
@@ -62,12 +66,15 @@ interface FiveEntry {
   key: number
   royB: number
   royM: number
+  /** ジョーカー入りコンボの達成可能キー（昇順）。demote は keyFloor で行う。 */
+  wildKeys?: number[]
 }
 
 interface TopEntry {
   mask: number
   key: number
   royT: number
+  wildKeys?: number[]
 }
 
 // k枚組み合わせのインデックス列挙（コールバック方式・共有バッファでアロケーション回避）。
@@ -92,17 +99,27 @@ function forEachIndexCombo(n: number, k: number, cb: (idx: readonly number[]) =>
 const fiveBuf: Card[] = new Array(5)
 const threeBuf: Card[] = new Array(3)
 
+/** バッファ先頭 n 枚にジョーカーが含まれるか（demote が必要かの高速判定）。 */
+function hasJoker(buf: readonly Card[], n: number): boolean {
+  for (let i = 0; i < n; i++) if (buf[i].rank === 0) return true
+  return false
+}
+
 /** cards（n≤17枚）の全5枚組み合わせをキー・ロイヤリティ付きで列挙する。mask はインデックスビット。 */
 function prepFives(cards: readonly Card[]): FiveEntry[] {
   const out: FiveEntry[] = []
   forEachIndexCombo(cards.length, 5, (idx) => {
     let mask = 0
+    let wild = false
     for (let i = 0; i < 5; i++) {
       mask |= 1 << idx[i]
       fiveBuf[i] = cards[idx[i]]
+      if (fiveBuf[i].rank === 0) wild = true
     }
     const key = key5(fiveBuf)
-    out.push({ mask, key, royB: royaltyBottomKey(key), royM: royaltyMiddleKey(key) })
+    const entry: FiveEntry = { mask, key, royB: royaltyBottomKey(key), royM: royaltyMiddleKey(key) }
+    if (wild) entry.wildKeys = achievableKeys(fiveBuf, 5)
+    out.push(entry)
   })
   return out
 }
@@ -112,12 +129,16 @@ function prepTops(cards: readonly Card[]): TopEntry[] {
   const out: TopEntry[] = []
   forEachIndexCombo(cards.length, 3, (idx) => {
     let mask = 0
+    let wild = false
     for (let i = 0; i < 3; i++) {
       mask |= 1 << idx[i]
       threeBuf[i] = cards[idx[i]]
+      if (threeBuf[i].rank === 0) wild = true
     }
     const key = key3(threeBuf)
-    out.push({ mask, key, royT: royaltyTopKey(key) })
+    const entry: TopEntry = { mask, key, royT: royaltyTopKey(key) }
+    if (wild) entry.wildKeys = achievableKeys(threeBuf, 3)
+    out.push(entry)
   })
   return out
 }
@@ -182,12 +203,27 @@ export function solveBest13(
     for (let mi = 0; mi < nf; mi++) {
       const m = fives[mi]
       if (b.mask & m.mask) continue
-      if (m.key > b.key) continue // middle > bottom はファウル
+      // middle > bottom: ジョーカー入りなら demote（bound 以下で最強）を試みる
+      let mKey = m.key
+      let mRoy = m.royM
+      if (mKey > b.key) {
+        if (!m.wildKeys) continue
+        mKey = keyFloor(m.wildKeys, b.key)
+        if (mKey < 0) continue
+        mRoy = royaltyMiddleKey(mKey)
+      }
       const topMask = FULL & ~(b.mask | m.mask)
       const t = topsByMask.get(topMask)!
-      if (t.key > m.key) continue // top > middle はファウル
-      const roys = b.royB + m.royM + t.royT
-      const fl = flEntryFromTopKey(t.key, variant)
+      let tKey = t.key
+      let tRoy = t.royT
+      if (tKey > mKey) {
+        if (!t.wildKeys) continue
+        tKey = keyFloor(t.wildKeys, mKey)
+        if (tKey < 0) continue
+        tRoy = royaltyTopKey(tKey)
+      }
+      const roys = b.royB + mRoy + tRoy
+      const fl = flEntryFromTopKey(tKey, variant)
       const obj = roys + (fl > 0 ? fantasylandBonus : 0)
       if (best.length === topK && obj <= best[best.length - 1].obj) continue
       insertBest(best, { obj, topMask, midMask: m.mask, botMask: b.mask }, topK)
@@ -306,6 +342,17 @@ export const DEFAULT_FL_VALUES_JOKER: Readonly<Record<number, number>> = {
 }
 
 /**
+ * E_N 補正なし（二重計上）の同枚数維持 V（ジョーカー入り）= 参考ソルバーの会計水準。
+ * 参考ソルバーとの EV 比較・「二重計上FL価値込み平均」の表示に使う（推奨手の評価には使わない）。
+ */
+export const UNCORRECTED_FL_VALUES_JOKER: Readonly<Record<number, number>> = {
+  14: 20.4,
+  15: 36.8,
+  16: 65.8,
+  17: 126.1,
+}
+
+/**
  * プログレッシブ（突入時のみ枚数増、リステイは14枚に戻る）用の FL 期待価値。
  * 同じ実測量（S_FL, S_N, pStay, pEntry）から解析的に導出:
  *   μ = S_N + E_N,  V(14) = (S_FL(14) − μ)/(1 − pStay(14)),
@@ -411,31 +458,63 @@ export function solveFantasyland(
     for (let mi = 0; mi < nf; mi++) {
       const m = fives[mi]
       if (b.mask & m.mask) continue
-      if (m.key > b.key) continue
+      // middle > bottom: ジョーカー入りなら demote を試みる
+      let mKey = m.key
+      let mRoy = m.royM
+      if (mKey > b.key) {
+        if (!m.wildKeys) continue
+        mKey = keyFloor(m.wildKeys, b.key)
+        if (mKey < 0) continue
+        mRoy = royaltyMiddleKey(mKey)
+      }
       const used = b.mask | m.mask
 
-      // 最善の top: ロイヤリティ付き top は目的値降順に並んでいるので、最初に置けたものが最善。
-      // （ロイヤリティ0の top の目的値は 0 なので、ロイヤリティ付きが置けるなら常にそちらが勝つ。）
+      // 最善の top: リストは「demote 前の目的値」降順なので、それを上界として
+      // 「現在の最良を上界が下回ったら打ち切り」で走査する（demote は目的値を下げるだけ）。
       let bestTop: TopEntry | null = null
+      let bestTopKey = -1
+      let bestTopObj = -1
       for (const t of royaltyList) {
+        const upper = bottomStays ? t.royT : topObjWithStay(t, stayBonus)
+        if (bestTop !== null && upper <= bestTopObj) break
         if (t.mask & used) continue
-        if (t.key > m.key) continue
-        bestTop = t
-        break
+        let tKey = t.key
+        if (tKey > mKey) {
+          if (!t.wildKeys) continue
+          tKey = keyFloor(t.wildKeys, mKey)
+          if (tKey < 0) continue
+        }
+        const tObj =
+          royaltyTopKey(tKey) +
+          (!bottomStays && tKey >>> 20 === HandCategory.Trips ? stayBonus : 0)
+        if (tObj > bestTopObj) {
+          bestTop = t
+          bestTopKey = tKey
+          bestTopObj = tObj
+        }
       }
       if (bestTop === null) {
-        // ロイヤリティ top を置けない場合、最弱の有効 top（弱い順で最初の空き）で非ファウルに埋める。
+        // ロイヤリティ top を置けない場合、最弱の有効 top で非ファウルに埋める。
+        // （昇順リストだが、ジョーカー入り top は demote で後方でも有効になりうるため break しない。）
         for (const t of topsAscKey) {
-          if (t.key > m.key) break // 以降はすべて middle を超える → この (bottom, middle) は不成立
           if (t.mask & used) continue
+          let tKey = t.key
+          if (tKey > mKey) {
+            if (!t.wildKeys) continue
+            tKey = keyFloor(t.wildKeys, mKey)
+            if (tKey < 0) continue
+          }
           bestTop = t
+          bestTopKey = tKey
+          bestTopObj = royaltyTopKey(tKey)
           break
         }
       }
       if (bestTop === null) continue
 
-      const stays = bottomStays || bestTop.key >>> 20 === HandCategory.Trips
-      const obj = b.royB + m.royM + bestTop.royT + (stays ? stayBonus : 0)
+      const stays = bottomStays || bestTopKey >>> 20 === HandCategory.Trips
+      const obj =
+        b.royB + mRoy + royaltyTopKey(bestTopKey) + (stays ? stayBonus : 0)
       if (best.length === topK && obj <= best[best.length - 1].obj) continue
       insertBest(best, { obj, topMask: bestTop.mask, midMask: m.mask, botMask: b.mask, stays }, topK)
     }
@@ -643,15 +722,26 @@ export function bestCompletion(
       }
       const botKey = cap.bottom === 0 ? fixedBotKey : key5(botBuf)
 
-      const fouled = botKey < midKey || midKey < topKey
+      // ファウル判定（ジョーカー入りの段は demote = bound 以下で最強に解決してから判定）
+      let mKey = midKey
+      let tKey = topKey
+      let fouled = false
+      if (botKey < mKey) {
+        mKey = hasJoker(midBuf, 5) ? key5AtMost(midBuf, botKey) : -1
+        if (mKey < 0) fouled = true
+      }
+      if (!fouled && mKey < tKey) {
+        tKey = hasJoker(topBuf, 3) ? key3AtMost(topBuf, mKey) : -1
+        if (tKey < 0) fouled = true
+      }
       let score: number
       if (fouled) {
         score = -1000
       } else {
-        const roys = royaltyBottomKey(botKey) + royaltyMiddleKey(midKey) + royaltyTopKey(topKey)
+        const roys = royaltyBottomKey(botKey) + royaltyMiddleKey(mKey) + royaltyTopKey(tKey)
         score = roys
         if (flValues || flBonus !== 0) {
-          const flN = flEntryFromTopKey(topKey, variant)
+          const flN = flEntryFromTopKey(tKey, variant)
           if (flN > 0) score += flValues ? (flValues[flN] ?? 0) : flBonus
         }
       }
@@ -756,14 +846,24 @@ export function bestCompletionChoose(
         }
         const botKey = cap.bottom === 0 ? fixedBotKey : key5(botBuf)
 
-        const fouled = botKey < midKey || midKey < topKey
+        let mKey = midKey
+        let tKey = topKey
+        let fouled = false
+        if (botKey < mKey) {
+          mKey = hasJoker(midBuf, 5) ? key5AtMost(midBuf, botKey) : -1
+          if (mKey < 0) fouled = true
+        }
+        if (!fouled && mKey < tKey) {
+          tKey = hasJoker(topBuf, 3) ? key3AtMost(topBuf, mKey) : -1
+          if (tKey < 0) fouled = true
+        }
         let score: number
         if (fouled) {
           score = -1000
         } else {
-          score = royaltyBottomKey(botKey) + royaltyMiddleKey(midKey) + royaltyTopKey(topKey)
+          score = royaltyBottomKey(botKey) + royaltyMiddleKey(mKey) + royaltyTopKey(tKey)
           if (flValues) {
-            const flN = flEntryFromTopKey(topKey, variant)
+            const flN = flEntryFromTopKey(tKey, variant)
             if (flN > 0) score += flValues[flN] ?? 0
           }
         }
