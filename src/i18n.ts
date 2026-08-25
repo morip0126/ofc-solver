@@ -55,6 +55,7 @@ const messages = {
   drillFLRate: { ja: 'FL突入率', en: 'FL rate' },
   drillFoulRate: { ja: 'ファウル率', en: 'Foul rate' },
   drillRoyAvg: { ja: '素点平均', en: 'Avg royalties' },
+  drillScoreAvg: { ja: 'FL価値込み平均', en: 'Avg incl. FL value' },
   drillFLBreakdown: { ja: 'FL内訳', en: 'FL breakdown' },
   drillResetStats: { ja: '成績をリセット', en: 'Reset stats' },
   drillTarget: { ja: '参考ソルバーの水準: FL 54.8%', en: 'Reference solver level: FL 54.8%' },
