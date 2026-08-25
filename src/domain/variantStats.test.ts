@@ -47,7 +47,7 @@ interface PlayPrecision {
   initIters: number
   streetIters: number
   refineTopK: number
-  futureModel: 'streets' | 'combined'
+  futureModel: 'streets' | 'combined' | 'policy'
 }
 
 const LIGHT: PlayPrecision = { initIters: 64, streetIters: 96, refineTopK: 8, futureModel: 'streets' }
@@ -294,6 +294,31 @@ describe('precision scaling (set FL_PRECISION2_HANDS to run)', () => {
       streetIters: 384,
       refineTopK: 48,
       futureModel: 'streets',
+    })
+  }, 14_400_000)
+})
+
+// プレーの判断モデルを policy（参考ソルバーのプレーヤー像 = チェイス寄り逐次）にした自己プレー。
+// FL価値は補正済みの正直な既定のまま。目標: 素点・FL率が streets プレーの上限帯（素点14.7 / FL34%）
+// を超えるか（参考ソルバー並みの実力への一歩）。
+const POLICY_HANDS = Number(process.env.FL_POLICY_HANDS ?? 0)
+
+describe('policy-model play (set FL_POLICY_HANDS to run)', () => {
+  it.skipIf(POLICY_HANDS <= 0)('ultimate / 54-card joker, policy 64/96', () => {
+    runConfig(ULTIMATE, true, POLICY_HANDS, 0xa154, 1, {
+      initIters: 64,
+      streetIters: 96,
+      refineTopK: 8,
+      futureModel: 'policy',
+    })
+  }, 14_400_000)
+
+  it.skipIf(POLICY_HANDS <= 0)('ultimate / 54-card joker, policy 256/384', () => {
+    runConfig(ULTIMATE, true, POLICY_HANDS, 0xa154, 1, {
+      initIters: 256,
+      streetIters: 384,
+      refineTopK: 12,
+      futureModel: 'policy',
     })
   }, 14_400_000)
 })
