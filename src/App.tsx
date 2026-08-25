@@ -2,6 +2,7 @@ import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState }
 import {
   type Card,
   DEFAULT_FL_VALUES_JOKER,
+  UNCORRECTED_FL_VALUES_JOKER,
   stayBonusFor,
   ROW_CAP,
   type RowKey,
@@ -1939,17 +1940,17 @@ function DrillStatsView({ lang, stats }: { lang: Lang; stats: DrillStats }) {
   if (stats.hands === 0) return null
   const entriesTotal = Object.values(stats.entries).reduce((a, b) => a + b, 0)
   const pct = (x: number) => `${((100 * x) / stats.hands).toFixed(1)}%`
-  // FL枚数別の突入割合（全ハンド比）。
+  // FL枚数別の突入割合（全ハンド比、アルティメット表記: QQ=14 / KK=15 / AA=16 / tri=17）。
+  const FL_LABELS: Record<number, string> = { 14: 'QQ', 15: 'KK', 16: 'AA', 17: 'tri' }
   const breakdown = [14, 15, 16, 17]
-    .filter((n) => (stats.entries[n] ?? 0) > 0)
-    .map((n) => `${n}:${pct(stats.entries[n])}`)
+    .map((n) => `${FL_LABELS[n]}:${pct(stats.entries[n] ?? 0)}`)
     .join(' ')
-  // FL価値込みの平均点 = (素点合計 + Σ 突入枚数×V(n)) / ハンド数。V はジョーカー用実測テーブル。
-  const flValueSum = [14, 15, 16, 17].reduce(
-    (a, n) => a + (stats.entries[n] ?? 0) * (DEFAULT_FL_VALUES_JOKER[n] ?? 0),
-    0,
-  )
-  const scoreAvg = (stats.roySum + flValueSum) / stats.hands
+  // FL価値込みの平均点 = (素点合計 + Σ 突入枚数×V(n)) / ハンド数。
+  // 補正済み（正直な会計）と二重計上（参考ソルバー会計 = 未補正 V）の両方を出す。
+  const flSum = (table: Readonly<Record<number, number>>) =>
+    [14, 15, 16, 17].reduce((a, n) => a + (stats.entries[n] ?? 0) * (table[n] ?? 0), 0)
+  const scoreAvg = (stats.roySum + flSum(DEFAULT_FL_VALUES_JOKER)) / stats.hands
+  const scoreAvg2 = (stats.roySum + flSum(UNCORRECTED_FL_VALUES_JOKER)) / stats.hands
   return (
     <div className="vs-stats">
       <span>
@@ -1958,13 +1959,12 @@ function DrillStatsView({ lang, stats }: { lang: Lang; stats: DrillStats }) {
       </span>
       <span>
         {t(lang, 'drillRoyAvg')} {(stats.roySum / stats.hands).toFixed(2)} /{' '}
-        {t(lang, 'drillScoreAvg')} {scoreAvg.toFixed(2)}
+        {t(lang, 'drillScoreAvg')} {scoreAvg.toFixed(2)} /{' '}
+        {t(lang, 'drillScoreAvg2')} {scoreAvg2.toFixed(2)}
       </span>
-      {breakdown && (
-        <span>
-          {t(lang, 'drillFLBreakdown')}: {breakdown}
-        </span>
-      )}
+      <span>
+        {t(lang, 'drillFLBreakdown')}: {breakdown}
+      </span>
       <span>{t(lang, 'drillTarget')}</span>
     </div>
   )
