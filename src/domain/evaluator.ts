@@ -86,6 +86,65 @@ function bestWildSubstitution(
   return best!
 }
 
+/**
+ * bound 以下という制約つきの最強置換。ジョーカーをどう置換しても bound を超えてしまう
+ * 場合は null（＝この段を bound 以下にできない）。ジョーカーなしのハンドにも使える
+ * （自身の値が bound 以下ならその値、超えるなら null）。
+ *
+ * ルームルール「ジョーカーはファウルしない置換の中で最強のカードになる」の実装部品。
+ * 段の間の順序制約（bottom ≥ middle ≥ top）を満たすための「上限つき最大化」。
+ */
+function bestWildSubstitutionBounded(
+  cards: readonly Card[],
+  evalNatural: (cs: readonly Card[]) => HandValue,
+  bound: HandValue,
+): HandValue | null {
+  const naturals = cards.filter((c) => !isJoker(c))
+  const jokers = cards.length - naturals.length
+  if (jokers === 0) {
+    const v = evalNatural(cards)
+    return compareHand(v, bound) <= 0 ? v : null
+  }
+  const present = new Set(naturals.map(cardId))
+  const subs = makeDeck().filter((c) => !present.has(cardId(c)))
+  const buf = naturals.slice()
+  buf.length = cards.length
+  let best: HandValue | null = null
+  const consider = (v: HandValue) => {
+    if (compareHand(v, bound) > 0) return
+    if (!best || compareHand(v, best) > 0) best = v
+  }
+  if (jokers === 1) {
+    for (const s of subs) {
+      buf[naturals.length] = s
+      consider(evalNatural(buf))
+    }
+  } else if (jokers === 2) {
+    for (let i = 0; i < subs.length; i++) {
+      for (let k = i + 1; k < subs.length; k++) {
+        buf[naturals.length] = subs[i]
+        buf[naturals.length + 1] = subs[k]
+        consider(evalNatural(buf))
+      }
+    }
+  } else {
+    throw new Error(`unsupported joker count: ${jokers}`)
+  }
+  return best
+}
+
+/** 5枚ハンドの「bound 以下で最強」評価（ファウル回避のジョーカー解決用）。 */
+export function evaluate5Bounded(cards: readonly Card[], bound: HandValue): HandValue | null {
+  if (cards.length !== 5) throw new Error(`evaluate5Bounded expects 5 cards, got ${cards.length}`)
+  return bestWildSubstitutionBounded(cards, evaluate5Natural, bound)
+}
+
+/** 3枚（top）ハンドの「bound 以下で最強」評価（ファウル回避のジョーカー解決用）。 */
+export function evaluate3Bounded(cards: readonly Card[], bound: HandValue): HandValue | null {
+  if (cards.length !== 3) throw new Error(`evaluate3Bounded expects 3 cards, got ${cards.length}`)
+  return bestWildSubstitutionBounded(cards, evaluate3Natural, bound)
+}
+
 /** 5枚ハンドを評価する（ジョーカーは置換総当たりで最強扱い）。 */
 export function evaluate5(cards: readonly Card[]): HandValue {
   if (cards.length !== 5) throw new Error(`evaluate5 expects 5 cards, got ${cards.length}`)

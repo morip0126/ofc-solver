@@ -2,8 +2,15 @@
 //
 // Arrangement は top(3枚) / middle(5枚) / bottom(5枚)。ファウルは bottom >= middle >= top を満たさない配置。
 
-import type { Card } from './cards'
-import { compareHand, evaluate3, evaluate5, type HandValue } from './evaluator'
+import { type Card, isJoker } from './cards'
+import {
+  compareHand,
+  evaluate3,
+  evaluate3Bounded,
+  evaluate5,
+  evaluate5Bounded,
+  type HandValue,
+} from './evaluator'
 import { royaltyBottom, royaltyMiddle, royaltyTop } from './royalties'
 import type { Variant } from './variants'
 
@@ -29,15 +36,36 @@ function assertSizes(a: Arrangement): void {
   }
 }
 
-/** 配置を評価し、各段の強さとファウル有無を返す。 */
+/**
+ * 配置を評価し、各段の強さとファウル有無を返す。
+ *
+ * ジョーカーのルームルール: 「ファウルしない置換の中で最強のカード」になる。
+ * 各段の独立最大化でファウルになる場合は、ボトムから順の貪欲で解決する
+ * （ボトムは上限なしなので常に最強のまま → ミドルはボトム以下で最強 →
+ * トップはミドル以下で最強）。どう置換しても順序を満たせない場合のみファウル。
+ */
 export function evaluateArrangement(a: Arrangement): EvaluatedArrangement {
   assertSizes(a)
   const top = evaluate3(a.top)
-  const middle = evaluate5(a.middle)
+  let middle = evaluate5(a.middle)
   const bottom = evaluate5(a.bottom)
-  // bottom は middle 以上、middle は top 以上でなければならない。
-  const fouled = compareHand(bottom, middle) < 0 || compareHand(middle, top) < 0
-  return { top, middle, bottom, fouled }
+  if (compareHand(bottom, middle) >= 0 && compareHand(middle, top) >= 0) {
+    return { top, middle, bottom, fouled: false }
+  }
+  // 独立最大化ではファウル。ジョーカーが絡む段は上限つきで解決し直す。
+  if (compareHand(bottom, middle) < 0) {
+    if (!a.middle.some(isJoker)) return { top, middle, bottom, fouled: true }
+    const m = evaluate5Bounded(a.middle, bottom)
+    if (!m) return { top, middle, bottom, fouled: true }
+    middle = m
+  }
+  if (compareHand(middle, top) < 0) {
+    if (!a.top.some(isJoker)) return { top, middle, bottom, fouled: true }
+    const t = evaluate3Bounded(a.top, middle)
+    if (!t) return { top, middle, bottom, fouled: true }
+    return { top: t, middle, bottom, fouled: false }
+  }
+  return { top, middle, bottom, fouled: false }
 }
 
 /** 配置の合計ロイヤリティ（ファウル時は 0）。 */
