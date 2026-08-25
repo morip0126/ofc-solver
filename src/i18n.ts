@@ -43,6 +43,22 @@ const messages = {
   },
 
   modeVs: { ja: '対戦', en: 'VS' },
+  modeDrill: { ja: 'ドリル', en: 'Drill' },
+  drillIntro: {
+    ja: 'KKハンド（K♦K♥6♦5♥3♥・アルティメット・ジョーカー入り54枚固定）を毎回配ります。続きの3枚はアプリがランダムに配るので、自力で13枚を完成させてFL突入率を測りましょう。推奨手は表示されません。',
+    en: 'Deals the KK hand (K♦K♥6♦5♥3♥, Ultimate, 54-card joker deck) every time. The app deals random streets; complete all 13 cards on your own to measure your FL entry rate. No suggestions are shown.',
+  },
+  drillDeal: { ja: 'ハンドを配る', en: 'Deal hand' },
+  drillNextHand: { ja: '次のハンド', en: 'Next hand' },
+  drillStatsTitle: { ja: '通算成績', en: 'Session stats' },
+  drillHands: { ja: 'ハンド数', en: 'Hands' },
+  drillFLRate: { ja: 'FL突入率', en: 'FL rate' },
+  drillFoulRate: { ja: 'ファウル率', en: 'Foul rate' },
+  drillRoyAvg: { ja: '素点平均', en: 'Avg royalties' },
+  drillFLBreakdown: { ja: 'FL内訳', en: 'FL breakdown' },
+  drillResetStats: { ja: '成績をリセット', en: 'Reset stats' },
+  drillTarget: { ja: '参考ソルバーの水準: FL 54.8%', en: 'Reference solver level: FL 54.8%' },
+  confirmDrillReset: { ja: 'ドリルの通算成績をリセットしますか？', en: 'Reset drill session stats?' },
   solverName: { ja: 'ソルバー', en: 'Solver' },
   vsIntro: {
     ja: 'ソルバーと1対1で対戦します。配牌は自動、捨て札は互いに非公開。先手（OOP）が先に置き、後手（IP）は相手の配置を見てから置けます。ポジションはハンドごとに交代。',

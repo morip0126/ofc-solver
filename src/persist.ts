@@ -19,7 +19,7 @@ export interface PersistedSettings {
   lang: 'ja' | 'en'
   variantId: VariantId
   players: 2 | 3
-  mode: 'play' | 'fl' | 'vs'
+  mode: 'play' | 'fl' | 'vs' | 'drill'
   useJokers: boolean
   precision: Precision
 }
@@ -167,7 +167,7 @@ export function loadSettings(): Partial<PersistedSettings> {
   if (variantId) out.variantId = variantId as VariantId
   const players = oneOf(o.players, [2, 3] as const)
   if (players) out.players = players
-  const mode = oneOf(o.mode, ['play', 'fl', 'vs'] as const)
+  const mode = oneOf(o.mode, ['play', 'fl', 'vs', 'drill'] as const)
   if (mode) out.mode = mode
   if (typeof o.useJokers === 'boolean') out.useJokers = o.useJokers
   const precision = oneOf(o.precision, ['fast', 'standard', 'high', 'ultra', 'deep'] as const)
@@ -451,6 +451,52 @@ export function saveVsStatsByConfig(stats: VsStatsByConfig): void {
 }
 
 /** 初回起動時の言語既定値（ブラウザ設定から推定）。 */
+// ---- ドリルモード（KKハンド自己テスト）の通算成績 --------------------------------
+
+export interface DrillStats {
+  hands: number
+  fouls: number
+  /** 非ファウルハンドのロイヤリティ合計（素点。ファウルは0点として合計に不算入）。 */
+  roySum: number
+  /** FL突入枚数別の回数（14..17）。 */
+  entries: Record<number, number>
+}
+
+export function emptyDrillStats(): DrillStats {
+  return { hands: 0, fouls: 0, roySum: 0, entries: {} }
+}
+
+const DRILL_STATS_KEY = 'ofc-solver:drillStats:v1'
+
+export function loadDrillStats(): DrillStats {
+  try {
+    const raw = localStorage.getItem(DRILL_STATS_KEY)
+    if (!raw) return emptyDrillStats()
+    const o = JSON.parse(raw) as Partial<DrillStats>
+    if (typeof o.hands !== 'number' || typeof o.fouls !== 'number' || typeof o.roySum !== 'number') {
+      return emptyDrillStats()
+    }
+    const entries: Record<number, number> = {}
+    if (o.entries && typeof o.entries === 'object') {
+      for (const [k, v] of Object.entries(o.entries)) {
+        const n = Number(k)
+        if (n >= 14 && n <= 17 && typeof v === 'number') entries[n] = v
+      }
+    }
+    return { hands: o.hands, fouls: o.fouls, roySum: o.roySum, entries }
+  } catch {
+    return emptyDrillStats()
+  }
+}
+
+export function saveDrillStats(stats: DrillStats): void {
+  try {
+    localStorage.setItem(DRILL_STATS_KEY, JSON.stringify(stats))
+  } catch {
+    // ベストエフォート
+  }
+}
+
 export function detectLang(): 'ja' | 'en' {
   if (typeof navigator === 'undefined') return 'ja'
   return (navigator.language || '').toLowerCase().startsWith('ja') ? 'ja' : 'en'
