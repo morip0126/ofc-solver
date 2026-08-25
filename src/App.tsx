@@ -1,6 +1,7 @@
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   type Card,
+  DEFAULT_FL_VALUES_JOKER,
   stayBonusFor,
   ROW_CAP,
   type RowKey,
@@ -1938,16 +1939,26 @@ function DrillStatsView({ lang, stats }: { lang: Lang; stats: DrillStats }) {
   if (stats.hands === 0) return null
   const entriesTotal = Object.values(stats.entries).reduce((a, b) => a + b, 0)
   const pct = (x: number) => `${((100 * x) / stats.hands).toFixed(1)}%`
+  // FL枚数別の突入割合（全ハンド比）。
   const breakdown = [14, 15, 16, 17]
     .filter((n) => (stats.entries[n] ?? 0) > 0)
-    .map((n) => `${n}:${stats.entries[n]}`)
+    .map((n) => `${n}:${pct(stats.entries[n])}`)
     .join(' ')
+  // FL価値込みの平均点 = (素点合計 + Σ 突入枚数×V(n)) / ハンド数。V はジョーカー用実測テーブル。
+  const flValueSum = [14, 15, 16, 17].reduce(
+    (a, n) => a + (stats.entries[n] ?? 0) * (DEFAULT_FL_VALUES_JOKER[n] ?? 0),
+    0,
+  )
+  const scoreAvg = (stats.roySum + flValueSum) / stats.hands
   return (
     <div className="vs-stats">
       <span>
         <strong>{t(lang, 'drillStatsTitle')}</strong> {t(lang, 'drillHands')} {stats.hands} /{' '}
-        {t(lang, 'drillFLRate')} {pct(entriesTotal)} / {t(lang, 'drillFoulRate')} {pct(stats.fouls)}{' '}
-        / {t(lang, 'drillRoyAvg')} {(stats.roySum / stats.hands).toFixed(2)}
+        {t(lang, 'drillFLRate')} {pct(entriesTotal)} / {t(lang, 'drillFoulRate')} {pct(stats.fouls)}
+      </span>
+      <span>
+        {t(lang, 'drillRoyAvg')} {(stats.roySum / stats.hands).toFixed(2)} /{' '}
+        {t(lang, 'drillScoreAvg')} {scoreAvg.toFixed(2)}
       </span>
       {breakdown && (
         <span>
