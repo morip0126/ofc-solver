@@ -4,13 +4,18 @@
 //
 //   RACE_KK=1 pnpm vitest run src/domain/deepGridRace.test.ts --testTimeout=28800000
 //
+// 進捗はラウンド単位で RACE_KK_DIR にキャッシュされ、中断後の再実行はキャッシュを
+// 瞬時に再生してから続きを計算する（コンテナ再起動対策）。
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, it } from 'vitest'
 import { cardToString, parseCards } from './cards'
 import { raceCandidates } from './racing'
-import { evaluateInitialChunk, generateInitialBoards } from './solver'
+import { type CandidateMetric, evaluateInitialChunk, generateInitialBoards } from './solver'
 import { ULTIMATE } from './variants'
 
 const RUN = process.env.RACE_KK === '1'
+const CACHE_DIR = process.env.RACE_KK_DIR ?? '/tmp/raceKK-cache'
 
 describe('deep grid racing: KK reference hand (set RACE_KK=1 to run)', () => {
   it.skipIf(!RUN)('race all initial candidates with rollout/policy leaf', async () => {
@@ -18,10 +23,27 @@ describe('deep grid racing: KK reference hand (set RACE_KK=1 to run)', () => {
     const boards = generateInitialBoards(cards)
     const t0 = Date.now()
     let units = 0
+    mkdirSync(CACHE_DIR, { recursive: true })
+    const logFile = join(CACHE_DIR, 'progress.log')
+    const log = (line: string): void => {
+      console.log(line)
+      appendFileSync(logFile, line + '\n')
+    }
 
     const evalFn = async (indices: number[], iters: number, seed: number) => {
+      const cacheFile = join(CACHE_DIR, `round-${seed}-${iters}.json`)
+      if (existsSync(cacheFile)) {
+        const cached = JSON.parse(readFileSync(cacheFile, 'utf8')) as {
+          indices: number[]
+          results: CandidateMetric[]
+        }
+        if (cached.indices.join() === indices.join()) {
+          log(`round seed=${seed}: cache hit (${indices.length} candidates)`)
+          return cached.results
+        }
+      }
       units += indices.length * iters
-      return evaluateInitialChunk(cards, [], ULTIMATE, indices, {
+      const results = evaluateInitialChunk(cards, [], ULTIMATE, indices, {
         iters,
         seed,
         jokers: true,
@@ -29,11 +51,13 @@ describe('deep grid racing: KK reference hand (set RACE_KK=1 to run)', () => {
         rolloutInner: 24,
         rolloutLeaf: 'policy',
       })
+      writeFileSync(cacheFile, JSON.stringify({ indices, results }))
+      return results
     }
 
     const result = await raceCandidates(boards.length, evalFn, 0xace1, {
       onRound: (r, alive, unitsDone) =>
-        console.log(
+        log(
           `round ${r}: alive=${alive} units=${unitsDone} (${Math.round((Date.now() - t0) / 1000)}s)`,
         ),
     })
@@ -43,7 +67,7 @@ describe('deep grid racing: KK reference hand (set RACE_KK=1 to run)', () => {
     for (const m of result.slice(0, 10)) {
       const b = boards[m.index]
       const bd = m.flBreakdown
-      console.log(
+      log(
         `#${m.index} n=${m.n} T[${row(b.top)}] M[${row(b.middle)}] B[${row(b.bottom)}] ` +
           `score=${m.score.toFixed(2)} ±${Math.sqrt((m.scoreVar ?? 0) / m.n).toFixed(2)} ` +
           `foul=${(100 * m.foulProb).toFixed(1)}% fl=${(100 * m.flProb).toFixed(1)}% ` +
@@ -51,7 +75,7 @@ describe('deep grid racing: KK reference hand (set RACE_KK=1 to run)', () => {
           `16:${(100 * (bd[16] ?? 0)).toFixed(1)} 17:${(100 * (bd[17] ?? 0)).toFixed(1)}}`,
       )
     }
-    console.log(
+    log(
       `TOTAL units=${units} (flat=${boards.length * 140}) time=${Math.round((Date.now() - t0) / 1000)}s`,
     )
   }, 28_800_000)
