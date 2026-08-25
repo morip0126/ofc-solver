@@ -743,9 +743,11 @@ export default function App() {
   // ---- ドリルモード ----
 
   const dealDrill = useCallback(() => {
-    setHero(emptyBoard())
+    // 検証対象セルの固定初手: M[KdKh] B[6d5h3h]（参考ソルバー#1の配置）。
+    // 初手の配置選択はスキップし、1ストリート目の3枚から始める。
+    setHero({ top: [], middle: DRILL_CARDS.slice(0, 2), bottom: DRILL_CARDS.slice(2) })
     setHeroDiscards([])
-    setPool([...DRILL_CARDS])
+    setPool([])
     setAssign({})
     setSelectedPoolId(null)
     setHistory([])

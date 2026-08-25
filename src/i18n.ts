@@ -45,8 +45,8 @@ const messages = {
   modeVs: { ja: '対戦', en: 'VS' },
   modeDrill: { ja: 'ドリル', en: 'Drill' },
   drillIntro: {
-    ja: 'KKハンド（K♦K♥6♦5♥3♥・アルティメット・ジョーカー入り54枚固定）を毎回配ります。続きの3枚はアプリがランダムに配るので、自力で13枚を完成させてFL突入率を測りましょう。推奨手は表示されません。',
-    en: 'Deals the KK hand (K♦K♥6♦5♥3♥, Ultimate, 54-card joker deck) every time. The app deals random streets; complete all 13 cards on your own to measure your FL entry rate. No suggestions are shown.',
+    ja: '検証シナリオ: 初手は M[K♦K♥] B[6♦5♥3♥] に固定配置済み（アルティメット・ジョーカー入り54枚）。続く各ストリートの3枚はアプリがランダムに配るので、自力で13枚を完成させてFL突入率を測りましょう。FLハンド自体はプレイせず、突入の記録のみ。推奨手は表示されません。',
+    en: 'Test scenario: the initial placement is fixed to M[K♦K♥] B[6♦5♥3♥] (Ultimate, 54-card joker deck). The app deals random streets; complete all 13 cards on your own to measure your FL entry rate. FL hands themselves are not played — only entries are recorded. No suggestions are shown.',
   },
   drillDeal: { ja: 'ハンドを配る', en: 'Deal hand' },
   drillNextHand: { ja: '次のハンド', en: 'Next hand' },
