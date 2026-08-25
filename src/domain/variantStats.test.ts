@@ -23,6 +23,8 @@ import {
   DEFAULT_FL_VALUES_JOKER,
   PROGRESSIVE_FL_VALUES,
   PROGRESSIVE_FL_VALUES_JOKER,
+  UNCORRECTED_FL_VALUES,
+  UNCORRECTED_FL_VALUES_JOKER,
   solveBest13,
   solveFantasyland,
   stayBonusFor,
@@ -183,26 +185,34 @@ function runConfig(
   const se = Math.sqrt(Math.max(0, sum2 / hands - mean * mean) / hands)
   const totalEntries = entries[14] + entries[15] + entries[16] + entries[17]
   const pct = (x: number, base: number) => (base > 0 ? ((100 * x) / base).toFixed(1) : '0.0')
+
+  // ---- 統一フォーマット（CLAUDE.md 参照。集計基準 = 通常ハンド、FL突入は entry ベース）----
+  const corrTable = jokers ? DEFAULT_FL_VALUES_JOKER : DEFAULT_FL_VALUES
+  const uncorrTable = jokers ? UNCORRECTED_FL_VALUES_JOKER : UNCORRECTED_FL_VALUES
+  const flSumBy = (t: Readonly<Record<number, number>>) =>
+    [14, 15, 16, 17].reduce((a, n) => a + entries[n] * (t[n] ?? 0), 0)
+  const royAvg = royNormal / Math.max(1, normalHands)
+  const inclCorr = (royNormal + flSumBy(corrTable)) / Math.max(1, normalHands)
+  const inclUncorr = (royNormal + flSumBy(uncorrTable)) / Math.max(1, normalHands)
   console.log(`[${label}] ===== 結果 (${hands}ハンド, ${Math.round((Date.now() - t0) / 1000)}s) =====`)
   console.log(
-    `[${label}] 平均得点/ハンド μ = ${mean.toFixed(2)} ±${se.toFixed(2)} ` +
-      `(通常 ${normalHands}ハンド: ${(normalSum / Math.max(1, normalHands)).toFixed(2)}, ` +
-      `FL ${flHands}ハンド: ${(flSum / Math.max(1, flHands)).toFixed(2)})`,
+    `[${label}] 通算成績 ハンド数 ${normalHands} / FL突入率 ${pct(totalEntries, normalHands)}% / ` +
+      `ファウル率 ${pct(fouls, normalHands)}%`,
   )
   console.log(
-    `[${label}] 素点(ロイヤリティ)/ハンド = ${((royNormal + royFL) / hands).toFixed(2)} ` +
-      `(通常: ${(royNormal / Math.max(1, normalHands)).toFixed(2)}, ` +
-      `FL: ${(royFL / Math.max(1, flHands)).toFixed(2)})`,
+    `[${label}] 素点平均 ${royAvg.toFixed(2)} / FL価値込み平均 ${inclCorr.toFixed(2)} / ` +
+      `二重計上FL価値込み平均 ${inclUncorr.toFixed(2)}`,
   )
   console.log(
-    `[${label}] 通常ハンド: ファウル ${pct(fouls, normalHands)}% ` +
-      `FL突入 ${pct(totalEntries, normalHands)}% ` +
-      `(14:${pct(entries[14], normalHands)}% 15:${pct(entries[15], normalHands)}% ` +
-      `16:${pct(entries[16], normalHands)}% 17:${pct(entries[17], normalHands)}%)`,
+    `[${label}] FL内訳: QQ:${pct(entries[14], normalHands)}% KK:${pct(entries[15], normalHands)}% ` +
+      `AA:${pct(entries[16], normalHands)}% tri:${pct(entries[17], normalHands)}%`,
   )
+  // ---- 補足（ライフサイクル指標）----
   console.log(
-    `[${label}] FLハンド: 全体の ${pct(flHands, hands)}% ` +
-      `(枚数内訳 14:${flPlayed[14]} 15:${flPlayed[15]} 16:${flPlayed[16]} 17:${flPlayed[17]}) ` +
+    `[${label}] 補足: 対戦μ ${mean.toFixed(2)} ±${se.toFixed(2)} ` +
+      `(通常 ${(normalSum / Math.max(1, normalHands)).toFixed(2)} / FL ${(flSum / Math.max(1, flHands)).toFixed(2)}) ` +
+      `全体素点 ${((royNormal + royFL) / hands).toFixed(2)} ` +
+      `FLハンド割合 ${pct(flHands, hands)}% (14:${flPlayed[14]} 15:${flPlayed[15]} 16:${flPlayed[16]} 17:${flPlayed[17]}) ` +
       `リステイ率 ${pct(stays, flHands)}%`,
   )
 }

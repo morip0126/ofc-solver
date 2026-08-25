@@ -353,6 +353,17 @@ export const UNCORRECTED_FL_VALUES_JOKER: Readonly<Record<number, number>> = {
 }
 
 /**
+ * 同上の52枚デッキ版。実測 S_FL / S_N / pStay から V = (S_FL − S_N)/(1 − pStay) で導出
+ * （E_N 補正なし。S_N=−8.6、pStay 52枚実測 {10.5%, 19.5%, 34.7%, 54.8%}）。
+ */
+export const UNCORRECTED_FL_VALUES: Readonly<Record<number, number>> = {
+  14: 14.3,
+  15: 21.7,
+  16: 33.1,
+  17: 60.3,
+}
+
+/**
  * プログレッシブ（突入時のみ枚数増、リステイは14枚に戻る）用の FL 期待価値。
  * 同じ実測量（S_FL, S_N, pStay, pEntry）から解析的に導出:
  *   μ = S_N + E_N,  V(14) = (S_FL(14) − μ)/(1 − pStay(14)),
