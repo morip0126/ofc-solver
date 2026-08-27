@@ -311,11 +311,14 @@ describe('precision scaling (set FL_PRECISION2_HANDS to run)', () => {
 // プレーの判断モデルを policy（参考ソルバーのプレーヤー像 = チェイス寄り逐次）にした自己プレー。
 // FL価値は補正済みの正直な既定のまま。目標: 素点・FL率が streets プレーの上限帯（素点14.7 / FL34%）
 // を超えるか（参考ソルバー並みの実力への一歩）。
+// policy は重い（1ハンド1分級）ため、FL_POLICY_SEED でシードを変えた小チャンク
+// （例: 50ハンド×8回）に分割して回し、出力を追記集約する（コンテナ再起動耐性）。
 const POLICY_HANDS = Number(process.env.FL_POLICY_HANDS ?? 0)
+const POLICY_SEED = Number(process.env.FL_POLICY_SEED ?? 0xa154)
 
 describe('policy-model play (set FL_POLICY_HANDS to run)', () => {
   it.skipIf(POLICY_HANDS <= 0)('ultimate / 54-card joker, policy 64/96', () => {
-    runConfig(ULTIMATE, true, POLICY_HANDS, 0xa154, 1, {
+    runConfig(ULTIMATE, true, POLICY_HANDS, POLICY_SEED, 1, {
       initIters: 64,
       streetIters: 96,
       refineTopK: 8,
@@ -323,12 +326,16 @@ describe('policy-model play (set FL_POLICY_HANDS to run)', () => {
     })
   }, 14_400_000)
 
-  it.skipIf(POLICY_HANDS <= 0)('ultimate / 54-card joker, policy 256/384', () => {
-    runConfig(ULTIMATE, true, POLICY_HANDS, 0xa154, 1, {
-      initIters: 256,
-      streetIters: 384,
-      refineTopK: 12,
-      futureModel: 'policy',
-    })
-  }, 14_400_000)
+  it.skipIf(POLICY_HANDS <= 0 || process.env.FL_POLICY_HEAVY !== '1')(
+    'ultimate / 54-card joker, policy 256/384',
+    () => {
+      runConfig(ULTIMATE, true, POLICY_HANDS, POLICY_SEED, 1, {
+        initIters: 256,
+        streetIters: 384,
+        refineTopK: 12,
+        futureModel: 'policy',
+      })
+    },
+    14_400_000,
+  )
 })
