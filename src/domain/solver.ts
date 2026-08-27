@@ -1565,6 +1565,12 @@ export interface SuggestOptions extends RankOptions {
   refineTopK?: number
   /** 進捗コールバック（0..1）。Worker からの進捗通知用。 */
   onProgress?: (done: number, total: number) => void
+  /**
+   * 終盤の厳密評価（残り2マス以下の候補に適用）。
+   * 最終ストリートの候補（13枚完成）は決定論的に、第3ストリートの候補（残り2マス）は
+   * 「次の3枚ドロー全列挙 × 最終ストリート厳密応答」の期待値で採点する。MCノイズなし。
+   */
+  endgameExact?: boolean
 }
 
 /**
@@ -1680,6 +1686,176 @@ export function evaluateStreetChunk(
   return out
 }
 
+/**
+ * 終盤の厳密評価。残りマス数（need）に応じて:
+ *   need 0（最終ストリート候補 = 13枚完成）: 決定論的評価（ファウル/ロイヤリティ/FLが確定）
+ *   need 2（第3ストリート候補）: 未知カードからの次3枚ドローを全列挙し、各ドローに対する
+ *     「最終ストリート厳密応答（3通りの捨て × 空き2マスへの配置）」の最大値を平均する期待値
+ *   それ以外: evaluateBoard へフォールバック
+ * ジョーカーは新ルール（ファウルしない置換の中で最強 = key5AtMost/key3AtMost の demote）。
+ */
+export function evaluateBoardEndgame(
+  board: Board,
+  dead: readonly Card[],
+  variant: Variant,
+  options: RankOptions = {},
+): BoardMetric {
+  const jokers = options.jokers ?? false
+  const foulWeight = options.foulWeight ?? DEFAULT_FOUL_WEIGHT
+  const flValues =
+    options.flValues ??
+    (variant.restayKeepsCount
+      ? jokers
+        ? DEFAULT_FL_VALUES_JOKER
+        : DEFAULT_FL_VALUES
+      : jokers
+        ? PROGRESSIVE_FL_VALUES_JOKER
+        : PROGRESSIVE_FL_VALUES)
+  const cap = remainingCap(board)
+  const need = cap.top + cap.middle + cap.bottom
+
+  if (need === 0) {
+    const ev = evaluateArrangement(board as Arrangement)
+    if (ev.fouled) {
+      return { expRoyalty: 0, flProb: 0, flEV: 0, foulProb: 1, flBreakdown: {}, score: -foulWeight, scoreVar: 0 }
+    }
+    const roys = royaltiesTotal(ev)
+    const fl = fantasylandCards(ev, variant)
+    const flv = fl > 0 ? (flValues[fl] ?? 0) : 0
+    return {
+      expRoyalty: roys,
+      flProb: fl > 0 ? 1 : 0,
+      flEV: flv,
+      foulProb: 0,
+      flBreakdown: fl > 0 ? { [fl]: 1 } : {},
+      score: roys + flv,
+      scoreVar: 0,
+    }
+  }
+  if (need !== 2) return evaluateBoard(board, dead, variant, options)
+
+  // ---- need === 2: 次ドロー全列挙 × 最終ストリート厳密応答 ----
+  const seen = [...board.top, ...board.middle, ...board.bottom, ...dead]
+  const deck = remainingDeck(seen, jokers)
+  if (deck.length < 3) return evaluateBoard(board, dead, variant, options)
+
+  // 空き2マスの行構成（同一行2マス or 異なる2行に1マスずつ）
+  const rowA: RowKey = cap.top > 0 ? 'top' : cap.middle > 0 ? 'middle' : 'bottom'
+  const capA = cap[rowA]
+  let rowB: RowKey | null = null
+  if (capA === 1) {
+    rowB = rowA === 'top' ? (cap.middle > 0 ? 'middle' : 'bottom') : 'bottom'
+  }
+
+  const topBuf: Card[] = board.top.slice()
+  topBuf.length = 3
+  const midBuf: Card[] = board.middle.slice()
+  midBuf.length = 5
+  const botBuf: Card[] = board.bottom.slice()
+  botBuf.length = 5
+  const bufOf = (r: RowKey) => (r === 'top' ? topBuf : r === 'middle' ? midBuf : botBuf)
+  const lenOf = (r: RowKey) =>
+    r === 'top' ? board.top.length : r === 'middle' ? board.middle.length : board.bottom.length
+
+  const topFixed = cap.top === 0 ? key3(topBuf) : 0
+  const midFixed = cap.middle === 0 ? key5(midBuf) : 0
+  const botFixed = cap.bottom === 0 ? key5(botBuf) : 0
+
+  // 1つの配置（空き2マスへの具体的なカード割当）の評価。ファウル（demote 不能）なら null。
+  const finishScore = (): { score: number; roys: number; fl: number } | null => {
+    const topKey = cap.top === 0 ? topFixed : key3(topBuf)
+    const midKey0 = cap.middle === 0 ? midFixed : key5(midBuf)
+    const botKey = cap.bottom === 0 ? botFixed : key5(botBuf)
+    let mKey = midKey0
+    let tKey = topKey
+    if (botKey < mKey) {
+      mKey = hasJoker(midBuf, 5) ? key5AtMost(midBuf, botKey) : -1
+      if (mKey < 0) return null
+    }
+    if (mKey < tKey) {
+      tKey = hasJoker(topBuf, 3) ? key3AtMost(topBuf, mKey) : -1
+      if (tKey < 0) return null
+    }
+    const roys = royaltyBottomKey(botKey) + royaltyMiddleKey(mKey) + royaltyTopKey(tKey)
+    const fl = flEntryFromTopKey(tKey, variant)
+    return { score: roys + (fl > 0 ? (flValues[fl] ?? 0) : 0), roys, fl }
+  }
+
+  let n = 0
+  let scoreSum = 0
+  let scoreSum2 = 0
+  let roySum = 0
+  let flCount = 0
+  let flvSum = 0
+  let foulCount = 0
+  const flCounts: Record<number, number> = {}
+
+  forEachIndexCombo(deck.length, 3, (idx) => {
+    const c0 = deck[idx[0]]
+    const c1 = deck[idx[1]]
+    const c2 = deck[idx[2]]
+    let best: { score: number; roys: number; fl: number } | null = null
+    for (let d = 0; d < 3; d++) {
+      const ka = d === 0 ? c1 : c0
+      const kb = d === 2 ? c1 : c2
+      if (capA === 2) {
+        const buf = bufOf(rowA)
+        const base = lenOf(rowA)
+        buf[base] = ka
+        buf[base + 1] = kb
+        const r = finishScore()
+        if (r && (!best || r.score > best.score)) best = r
+      } else {
+        const bufA = bufOf(rowA)
+        const bufB = bufOf(rowB!)
+        const baseA = lenOf(rowA)
+        const baseB = lenOf(rowB!)
+        bufA[baseA] = ka
+        bufB[baseB] = kb
+        let r = finishScore()
+        if (r && (!best || r.score > best.score)) best = r
+        bufA[baseA] = kb
+        bufB[baseB] = ka
+        r = finishScore()
+        if (r && (!best || r.score > best.score)) best = r
+      }
+    }
+    n++
+    if (!best) {
+      foulCount++
+      scoreSum += -foulWeight
+      scoreSum2 += foulWeight * foulWeight
+    } else {
+      roySum += best.roys
+      if (best.fl > 0) {
+        flCount++
+        flvSum += flValues[best.fl] ?? 0
+        flCounts[best.fl] = (flCounts[best.fl] ?? 0) + 1
+      }
+      scoreSum += best.score
+      scoreSum2 += best.score * best.score
+    }
+  })
+
+  const expRoyalty = roySum / n
+  const flProb = flCount / n
+  const flEV = flvSum / n
+  const foulProb = foulCount / n
+  const flBreakdown: Record<number, number> = {}
+  for (const [k, v] of Object.entries(flCounts)) flBreakdown[Number(k)] = v / n
+  const mean = scoreSum / n
+  return {
+    expRoyalty,
+    flProb,
+    flEV,
+    foulProb,
+    flBreakdown,
+    // 目的関数は他モデルと同型（期待ロイヤリティ + FL期待価値 − foulWeight×ファウル率）
+    score: expRoyalty + flEV - foulWeight * foulProb,
+    scoreVar: Math.max(0, scoreSum2 / n - mean * mean),
+  }
+}
+
 /** ストリート手を評価し、スコア降順で返す。 */
 export function suggestStreet(
   current: Board,
@@ -1688,15 +1864,21 @@ export function suggestStreet(
   variant: Variant,
   options: SuggestOptions = {},
 ): BoardSuggestion[] {
-  const { onProgress, ...rest } = options
+  const { onProgress, endgameExact, ...rest } = options
   const candidates = generateStreetBoards(current, drawn)
   const suggestions = candidates.map(({ board, discarded }, i) => {
     onProgress?.(i, candidates.length)
+    // 終盤厳密: 残り2マス以下の候補は決定論的/全列挙で採点（それ以外は evaluateBoardEndgame が
+    // evaluateBoard へフォールバックするが、無駄な分岐を避けるためここで振り分ける）。
+    const cap = remainingCap(board)
+    const useExact = endgameExact && cap.top + cap.middle + cap.bottom <= 2
     return {
       board,
       discarded,
       // 捨て札もデッキから除外する。
-      ...evaluateBoard(board, [...dead, discarded], variant, rest),
+      ...(useExact
+        ? evaluateBoardEndgame(board, [...dead, discarded], variant, rest)
+        : evaluateBoard(board, [...dead, discarded], variant, rest)),
     }
   })
   suggestions.sort((a, b) => b.score - a.score)
