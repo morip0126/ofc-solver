@@ -384,6 +384,8 @@ export interface SuggestStreetParams {
   futureModel?: FutureModel
   rolloutInner?: number
   rolloutLeaf?: 'streets' | 'policy'
+  /** 第3ストリート候補の全列挙厳密評価（解析精度）。最終ストリートの厳密化は常時オン。 */
+  endgameExact?: boolean
 }
 
 /** ストリート手の推奨（候補をプール全体へ分割評価）。 */
@@ -391,7 +393,7 @@ export function suggestStreetParallel(
   params: SuggestStreetParams,
   onProgress?: (frac: number) => void,
 ): PoolTask<SuggestionDTO[]> {
-  const { board, drawn, dead, variantId, jokers, iters, futureModel, rolloutInner, rolloutLeaf } = params
+  const { board, drawn, dead, variantId, jokers, iters, futureModel, rolloutInner, rolloutLeaf, endgameExact } = params
   const candidates = generateStreetBoards(board, drawn)
   const dto = boardDTO(board)
   const drawnCodes = drawn.map(cardToString)
@@ -425,6 +427,7 @@ export function suggestStreetParallel(
       futureModel,
       rolloutInner,
       rolloutLeaf,
+      endgameExact,
     } satisfies WorkerRequest,
   }))
   const inner = runChunks(specs, (d, t) => onProgress?.(t > 0 ? d / t : 0))

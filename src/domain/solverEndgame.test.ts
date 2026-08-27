@@ -30,12 +30,12 @@ function randomNearComplete(rng: () => number): { board: Board; drawn: ReturnTyp
 }
 
 describe('endgame exact evaluation', () => {
-  it('最終ストリート: 非ファウル手が存在する限り、厳密評価の1位はファウルしない', () => {
+  it('最終ストリート: 非ファウル手が存在する限り、1位はファウルしない（厳密化は常時オン）', () => {
     const rng = mulberry32(0xe6d)
     for (let t = 0; t < 200; t++) {
       const { board, drawn } = randomNearComplete(rng)
+      // endgameExact を渡さなくても最終ストリートの決定論的厳密評価は常時オン
       const sugg = suggestStreet(board, drawn, [], ULTIMATE, {
-        endgameExact: true,
         jokers: true,
         iters: 1,
       })

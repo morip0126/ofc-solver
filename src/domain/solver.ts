@@ -1566,9 +1566,9 @@ export interface SuggestOptions extends RankOptions {
   /** 進捗コールバック（0..1）。Worker からの進捗通知用。 */
   onProgress?: (done: number, total: number) => void
   /**
-   * 終盤の厳密評価（残り2マス以下の候補に適用）。
-   * 最終ストリートの候補（13枚完成）は決定論的に、第3ストリートの候補（残り2マス）は
-   * 「次の3枚ドロー全列挙 × 最終ストリート厳密応答」の期待値で採点する。MCノイズなし。
+   * 第3ストリート候補（残り2マス）を「次の3枚ドロー全列挙 × 最終ストリート厳密応答」の
+   * 期待値で採点する（MCノイズなし・重い）。最終ストリート候補（13枚完成）の決定論的
+   * 厳密評価は常時オン（純粋な上位互換・高速のため、このフラグに依らない）。
    */
   endgameExact?: boolean
 }
@@ -1634,6 +1634,8 @@ export interface ChunkOptions extends RankOptions {
   /** 候補ごとの決定論的 PRNG のベースシード。省略時は rng（または Math.random）を共有。 */
   seed?: number
   onProgress?: (done: number, total: number) => void
+  /** 第3ストリート候補（残り2マス）の全列挙厳密評価（SuggestOptions.endgameExact と同義）。 */
+  endgameExact?: boolean
 }
 
 /**
@@ -1674,11 +1676,17 @@ export function evaluateStreetChunk(
   indices: readonly number[],
   options: ChunkOptions = {},
 ): CandidateMetric[] {
-  const { seed, onProgress, ...rest } = options
+  const { seed, onProgress, endgameExact, ...rest } = options
   const candidates = generateStreetBoards(current, drawn)
   const out = indices.map((index, i) => {
     onProgress?.(i, indices.length)
     const { board, discarded } = candidates[index]
+    // suggestStreet と同じ終盤厳密の振り分け（決定論的なのでチャンク分割不変性は保たれる）。
+    const cap = remainingCap(board)
+    const need = cap.top + cap.middle + cap.bottom
+    if (need === 0 || (endgameExact && need <= 2)) {
+      return { index, ...evaluateBoardEndgame(board, [...dead, discarded], variant, rest) }
+    }
     const rng = seed !== undefined ? candidateRng(seed, index) : rest.rng
     return { index, ...evaluateBoard(board, [...dead, discarded], variant, { ...rest, rng }) }
   })
@@ -1868,10 +1876,11 @@ export function suggestStreet(
   const candidates = generateStreetBoards(current, drawn)
   const suggestions = candidates.map(({ board, discarded }, i) => {
     onProgress?.(i, candidates.length)
-    // 終盤厳密: 残り2マス以下の候補は決定論的/全列挙で採点（それ以外は evaluateBoardEndgame が
-    // evaluateBoard へフォールバックするが、無駄な分岐を避けるためここで振り分ける）。
+    // 終盤厳密: 最終ストリート（13枚完成）は常に決定論的評価、残り2マスは endgameExact 時のみ
+    // 全列挙（それ以外は evaluateBoardEndgame がフォールバックするが、分岐はここで振り分ける）。
     const cap = remainingCap(board)
-    const useExact = endgameExact && cap.top + cap.middle + cap.bottom <= 2
+    const need = cap.top + cap.middle + cap.bottom
+    const useExact = need === 0 || (endgameExact && need <= 2)
     return {
       board,
       discarded,

@@ -23,7 +23,7 @@ const MODEL = (process.env.CELL_PLAY_MODEL ?? 'policy') as 'policy' | 'streets' 
 const SEED = Number(process.env.CELL_PLAY_SEED ?? 0x5e11)
 const ITERS = Number(process.env.CELL_PLAY_ITERS ?? 96)
 const FOUL_W = process.env.CELL_PLAY_FOULW ? Number(process.env.CELL_PLAY_FOULW) : undefined
-/** 終盤厳密（第3・最終ストリートを全列挙評価）。 */
+/** 第3ストリートの全列挙厳密評価（最終ストリートの厳密化は常時オンになった）。 */
 const EXACT = process.env.CELL_PLAY_EXACT === '1'
 /** 損失監査: FLを逃したハンドを後知恵と突き合わせて分類する。 */
 const AUDIT = process.env.CELL_PLAY_AUDIT === '1'

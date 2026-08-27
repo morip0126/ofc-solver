@@ -128,6 +128,11 @@ function rolloutLeafFor(precision: Precision): 'policy' | undefined {
   return precision === 'deep' ? 'policy' : undefined
 }
 
+/** 解析は第3ストリートを次ドロー全列挙の厳密期待値で採点（最終ストリートの厳密化は全精度で常時オン）。 */
+function endgameExactFor(precision: Precision): boolean | undefined {
+  return precision === 'deep' ? true : undefined
+}
+
 /** 対戦モードの完了ラウンド数（0 = 未配置, 1 = 初手済, 2..5 = 各ストリート済）。 */
 function roundOf(count: number): number {
   return count <= 0 ? 0 : count <= 5 ? 1 : Math.min(5, 1 + Math.floor((count - 5) / 2))
@@ -637,6 +642,7 @@ export default function App() {
               futureModel: futureModelFor(precision),
               rolloutInner: rolloutInnerFor(precision),
               rolloutLeaf: rolloutLeafFor(precision),
+              endgameExact: endgameExactFor(precision),
             },
             setSuggProgress,
           )

@@ -115,6 +115,8 @@ export type WorkerRequest =
       futureModel?: FutureModel
       rolloutInner?: number
       rolloutLeaf?: 'streets' | 'policy'
+      /** 第3ストリート候補の全列挙厳密評価（解析精度）。 */
+      endgameExact?: boolean
     }
 
 export type WorkerResponse =
@@ -259,6 +261,7 @@ self.onmessage = (e: MessageEvent<WorkerRequest>) => {
             futureModel: msg.futureModel,
             rolloutInner: msg.rolloutInner,
             rolloutLeaf: msg.rolloutLeaf,
+            endgameExact: msg.endgameExact,
             onProgress: progressReporter(msg.id),
           },
         )
