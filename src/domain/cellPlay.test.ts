@@ -19,9 +19,15 @@ import {
 import { ULTIMATE } from './variants'
 
 const HANDS = Number(process.env.CELL_PLAY_HANDS ?? 0)
-const MODEL = (process.env.CELL_PLAY_MODEL ?? 'policy') as 'policy' | 'streets' | 'combined'
+const MODEL = (process.env.CELL_PLAY_MODEL ?? 'policy') as
+  | 'policy'
+  | 'streets'
+  | 'combined'
+  | 'rollout'
 const SEED = Number(process.env.CELL_PLAY_SEED ?? 0x5e11)
 const ITERS = Number(process.env.CELL_PLAY_ITERS ?? 96)
+/** rollout の内側モンテカルロ反復数（rollout-lite: 序盤の候補採点を逐次プレイ見積もりにする）。 */
+const RINNER = Number(process.env.CELL_PLAY_RINNER ?? 16)
 const FOUL_W = process.env.CELL_PLAY_FOULW ? Number(process.env.CELL_PLAY_FOULW) : undefined
 /** 第3ストリートの全列挙厳密評価（最終ストリートの厳密化は常時オンになった）。 */
 const EXACT = process.env.CELL_PLAY_EXACT === '1'
@@ -56,6 +62,8 @@ describe('cell play: M[KK] B[653] sequential (set CELL_PLAY_HANDS to run)', () =
           jokers: true,
           rng,
           futureModel: MODEL,
+          rolloutInner: RINNER,
+          rolloutLeaf: 'policy',
           foulWeight: FOUL_W,
           endgameExact: EXACT,
         })[0]
@@ -94,7 +102,7 @@ describe('cell play: M[KK] B[653] sequential (set CELL_PLAY_HANDS to run)', () =
     const flSum = (t: Readonly<Record<number, number>>) =>
       [14, 15, 16, 17].reduce((a, n) => a + entries[n] * (t[n] ?? 0), 0)
     console.log(
-      `[${MODEL} ${ITERS}iters seed=${SEED}${FOUL_W !== undefined ? ` foulW=${FOUL_W}` : ''}${EXACT ? ' exact-endgame' : ''}]`,
+      `[${MODEL} ${ITERS}iters${MODEL === 'rollout' ? ` rinner=${RINNER}` : ''} seed=${SEED}${FOUL_W !== undefined ? ` foulW=${FOUL_W}` : ''}${EXACT ? ' exact-endgame' : ''}]`,
     )
     console.log(
       `通算成績 ハンド数 ${HANDS} / FL突入率 ${pct(totalEntries)}% / ファウル率 ${pct(fouls)}%`,
