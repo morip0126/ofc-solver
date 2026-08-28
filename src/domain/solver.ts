@@ -14,7 +14,7 @@
 // ホットパスは fastEval.ts の 24bit パックキーで動く（アロケーション回避・整数比較）。
 // 正しさは solver.test.ts の参照実装（combinations + evaluateArrangement）とのクロスチェックで担保。
 
-import { type Card, isJoker, remainingDeck, without } from './cards'
+import { type Card, JOKER_CARDS, type Rank, SUITS, isJoker, remainingDeck, without } from './cards'
 import { combinations, mulberry32, shuffle } from './combinatorics'
 import {
   achievableKeys,
@@ -975,6 +975,11 @@ export interface RankOptions {
    * 参考ソルバーのプレイヤー像（トリップスFL重視・高ファウル）の再現用。
    */
   aggressiveTopCommit?: boolean
+  /**
+   * 終盤厳密（need=2）でランク空間高速パスを無効化してカード空間の全列挙を強制する
+   * （クロスチェックテスト用。通常は rankEndgameApplicable な盤面で自動的に高速パスを使う）。
+   */
+  endgameCardSpace?: boolean
 }
 
 export type FutureModel = 'combined' | 'policy' | 'rollout' | 'hindsight' | 'streets' | 'exact'
@@ -1747,6 +1752,12 @@ export function evaluateBoardEndgame(
   const deck = remainingDeck(seen, jokers)
   if (deck.length < 3) return evaluateBoard(board, dead, variant, options)
 
+  // フラッシュが構造的に不可能な盤面では、ドローをランク多重集合クラスに畳んだ
+  // 高速パス（結果はカード空間の全列挙と厳密一致、solverEndgameRank.test.ts で担保）。
+  if (!options.endgameCardSpace && rankEndgameApplicable(board)) {
+    return endgameNeed2Rank(board, deck, variant, flValues, foulWeight)
+  }
+
   // 空き2マスの行構成（同一行2マス or 異なる2行に1マスずつ）
   const rowA: RowKey = cap.top > 0 ? 'top' : cap.middle > 0 ? 'middle' : 'bottom'
   const capA = cap[rowA]
@@ -1859,6 +1870,185 @@ export function evaluateBoardEndgame(
     foulProb,
     flBreakdown,
     // 目的関数は他モデルと同型（期待ロイヤリティ + FL期待価値 − foulWeight×ファウル率）
+    score: expRoyalty + flEV - foulWeight * foulProb,
+    scoreVar: Math.max(0, scoreSum2 / n - mean * mean),
+  }
+}
+
+/**
+ * need=2 の厳密評価を「ランク空間」（スート消去）で等価に畳めるかの判定。
+ * ミドル/ボトムそれぞれで「確定札の最大同スート枚数 + 段内ジョーカー + 空きマス ≤ 4」なら、
+ * 以後どんなスートの札（ジョーカーの置換を含む）が入ってもフラッシュ系が構造的に不可能で、
+ * 評価はランクのみで決まる（トップは3枚役なので常にスート非依存）。
+ */
+export function rankEndgameApplicable(board: Board): boolean {
+  const cap = remainingCap(board)
+  for (const row of ['middle', 'bottom'] as const) {
+    const suitCnt: Partial<Record<string, number>> = {}
+    let rowJokers = 0
+    for (const c of board[row]) {
+      if (c.rank === 0) rowJokers++
+      else suitCnt[c.suit] = (suitCnt[c.suit] ?? 0) + 1
+    }
+    let maxSuit = 0
+    for (const v of Object.values(suitCnt)) if ((v ?? 0) > maxSuit) maxSuit = v ?? 0
+    if (maxSuit + rowJokers + cap[row] > 4) return false
+  }
+  return true
+}
+
+function comb3(n: number, k: number): number {
+  if (k > n) return 0
+  if (k <= 0) return 1
+  if (k === 1) return n
+  if (k === 2) return (n * (n - 1)) / 2
+  return (n * (n - 1) * (n - 2)) / 6
+}
+
+/**
+ * need=2 のランク空間高速パス: 次の3枚ドローをランク多重集合クラス（≤ 約560通り）に畳み、
+ * 超幾何重み（クラス内の組合せ数）つきで「最終ストリート厳密応答」の期待値を取る。
+ * rankEndgameApplicable が真の盤面ではカード空間の C(deck,3) 全列挙と厳密に一致する
+ * （代表カードのスートは評価に影響しないため任意でよい）。カード空間版が参照実装。
+ */
+function endgameNeed2Rank(
+  board: Board,
+  deck: readonly Card[],
+  variant: Variant,
+  flValues: Readonly<Record<number, number>>,
+  foulWeight: number,
+): BoardMetric {
+  const cap = remainingCap(board)
+  const rowA: RowKey = cap.top > 0 ? 'top' : cap.middle > 0 ? 'middle' : 'bottom'
+  const capA = cap[rowA]
+  let rowB: RowKey | null = null
+  if (capA === 1) {
+    rowB = rowA === 'top' ? (cap.middle > 0 ? 'middle' : 'bottom') : 'bottom'
+  }
+
+  const topBuf: Card[] = board.top.slice()
+  topBuf.length = 3
+  const midBuf: Card[] = board.middle.slice()
+  midBuf.length = 5
+  const botBuf: Card[] = board.bottom.slice()
+  botBuf.length = 5
+  const bufOf = (r: RowKey) => (r === 'top' ? topBuf : r === 'middle' ? midBuf : botBuf)
+  const lenOf = (r: RowKey) =>
+    r === 'top' ? board.top.length : r === 'middle' ? board.middle.length : board.bottom.length
+
+  const topFixed = cap.top === 0 ? key3(topBuf) : 0
+  const midFixed = cap.middle === 0 ? key5(midBuf) : 0
+  const botFixed = cap.bottom === 0 ? key5(botBuf) : 0
+
+  const finishScore = (): { score: number; roys: number; fl: number } | null => {
+    const topKey = cap.top === 0 ? topFixed : key3(topBuf)
+    const midKey0 = cap.middle === 0 ? midFixed : key5(midBuf)
+    const botKey = cap.bottom === 0 ? botFixed : key5(botBuf)
+    let mKey = midKey0
+    let tKey = topKey
+    if (botKey < mKey) {
+      mKey = hasJoker(midBuf, 5) ? key5AtMost(midBuf, botKey) : -1
+      if (mKey < 0) return null
+    }
+    if (mKey < tKey) {
+      tKey = hasJoker(topBuf, 3) ? key3AtMost(topBuf, mKey) : -1
+      if (tKey < 0) return null
+    }
+    const roys = royaltyBottomKey(botKey) + royaltyMiddleKey(mKey) + royaltyTopKey(tKey)
+    const fl = flEntryFromTopKey(tKey, variant)
+    return { score: roys + (fl > 0 ? (flValues[fl] ?? 0) : 0), roys, fl }
+  }
+
+  // 残り山のランク度数（0 = ジョーカー）と、クラス代表カード（スートは評価に無関係）。
+  const cnt = new Array<number>(15).fill(0)
+  for (const c of deck) cnt[c.rank]++
+  const ranks: number[] = []
+  for (let r = 0; r < 15; r++) if (cnt[r] > 0) ranks.push(r)
+  const rep = (r: number, i: number): Card =>
+    r === 0 ? JOKER_CARDS[Math.min(i, 1)] : { rank: r as Rank, suit: SUITS[i] }
+
+  let n = 0
+  let scoreSum = 0
+  let scoreSum2 = 0
+  let roySum = 0
+  let flCount = 0
+  let flvSum = 0
+  let foulCount = 0
+  const flCounts: Record<number, number> = {}
+
+  for (let i = 0; i < ranks.length; i++) {
+    for (let j = i; j < ranks.length; j++) {
+      for (let k = j; k < ranks.length; k++) {
+        const r0 = ranks[i]
+        const r1 = ranks[j]
+        const r2 = ranks[k]
+        let w: number
+        if (r0 === r1 && r1 === r2) w = comb3(cnt[r0], 3)
+        else if (r0 === r1) w = comb3(cnt[r0], 2) * cnt[r2]
+        else if (r1 === r2) w = cnt[r0] * comb3(cnt[r1], 2)
+        else w = cnt[r0] * cnt[r1] * cnt[r2]
+        if (w === 0) continue
+        const c0 = rep(r0, 0)
+        const c1 = rep(r1, 1)
+        const c2 = rep(r2, 2)
+        let best: { score: number; roys: number; fl: number } | null = null
+        for (let d = 0; d < 3; d++) {
+          const ka = d === 0 ? c1 : c0
+          const kb = d === 2 ? c1 : c2
+          if (capA === 2) {
+            const buf = bufOf(rowA)
+            const base = lenOf(rowA)
+            buf[base] = ka
+            buf[base + 1] = kb
+            const r = finishScore()
+            if (r && (!best || r.score > best.score)) best = r
+          } else {
+            const bufA = bufOf(rowA)
+            const bufB = bufOf(rowB!)
+            const baseA = lenOf(rowA)
+            const baseB = lenOf(rowB!)
+            bufA[baseA] = ka
+            bufB[baseB] = kb
+            let r = finishScore()
+            if (r && (!best || r.score > best.score)) best = r
+            bufA[baseA] = kb
+            bufB[baseB] = ka
+            r = finishScore()
+            if (r && (!best || r.score > best.score)) best = r
+          }
+        }
+        n += w
+        if (!best) {
+          foulCount += w
+          scoreSum += -foulWeight * w
+          scoreSum2 += foulWeight * foulWeight * w
+        } else {
+          roySum += best.roys * w
+          if (best.fl > 0) {
+            flCount += w
+            flvSum += (flValues[best.fl] ?? 0) * w
+            flCounts[best.fl] = (flCounts[best.fl] ?? 0) + w
+          }
+          scoreSum += best.score * w
+          scoreSum2 += best.score * best.score * w
+        }
+      }
+    }
+  }
+
+  const expRoyalty = roySum / n
+  const flProb = flCount / n
+  const flEV = flvSum / n
+  const foulProb = foulCount / n
+  const flBreakdown: Record<number, number> = {}
+  for (const [k, v] of Object.entries(flCounts)) flBreakdown[Number(k)] = v / n
+  const mean = scoreSum / n
+  return {
+    expRoyalty,
+    flProb,
+    flEV,
+    foulProb,
+    flBreakdown,
     score: expRoyalty + flEV - foulWeight * foulProb,
     scoreVar: Math.max(0, scoreSum2 / n - mean * mean),
   }
