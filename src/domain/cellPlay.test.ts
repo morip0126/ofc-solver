@@ -33,6 +33,11 @@ const FOUL_W = process.env.CELL_PLAY_FOULW ? Number(process.env.CELL_PLAY_FOULW)
 const EXACT = process.env.CELL_PLAY_EXACT === '1'
 /** 損失監査: FLを逃したハンドを後知恵と突き合わせて分類する。 */
 const AUDIT = process.env.CELL_PLAY_AUDIT === '1'
+/**
+ * キー札温存ボーナス実験: トップ列が未完のとき、Q以上またはジョーカーを捨てる候補の
+ * スコアを KEEPK 点減点して選ぶ（ハーネス内の選択時補正。ドメインは変更しない）。
+ */
+const KEEPK = Number(process.env.CELL_PLAY_KEEPK ?? 0)
 
 describe('cell play: M[KK] B[653] sequential (set CELL_PLAY_HANDS to run)', () => {
   it.skipIf(HANDS <= 0)(`play streets with futureModel=${MODEL}`, () => {
@@ -57,7 +62,7 @@ describe('cell play: M[KK] B[653] sequential (set CELL_PLAY_HANDS to run)', () =
       const discards: Card[] = []
       for (let s = 0; s < 4; s++) {
         const drawn = deck.slice(s * 3, s * 3 + 3)
-        const best = suggestStreet(board, drawn, discards, ULTIMATE, {
+        const suggs = suggestStreet(board, drawn, discards, ULTIMATE, {
           iters: ITERS,
           jokers: true,
           rng,
@@ -66,7 +71,19 @@ describe('cell play: M[KK] B[653] sequential (set CELL_PLAY_HANDS to run)', () =
           rolloutLeaf: 'policy',
           foulWeight: FOUL_W,
           endgameExact: EXACT,
-        })[0]
+        })
+        let best = suggs[0]
+        if (KEEPK > 0 && board.top.length < 3) {
+          let bestAdj = -Infinity
+          for (const s of suggs) {
+            const isKey = s.discarded && (s.discarded.rank === 0 || s.discarded.rank >= 12)
+            const adj = s.score - (isKey ? KEEPK : 0)
+            if (adj > bestAdj) {
+              bestAdj = adj
+              best = s
+            }
+          }
+        }
         board = best.board
         if (best.discarded) discards.push(best.discarded)
       }
@@ -102,7 +119,7 @@ describe('cell play: M[KK] B[653] sequential (set CELL_PLAY_HANDS to run)', () =
     const flSum = (t: Readonly<Record<number, number>>) =>
       [14, 15, 16, 17].reduce((a, n) => a + entries[n] * (t[n] ?? 0), 0)
     console.log(
-      `[${MODEL} ${ITERS}iters${MODEL === 'rollout' ? ` rinner=${RINNER}` : ''} seed=${SEED}${FOUL_W !== undefined ? ` foulW=${FOUL_W}` : ''}${EXACT ? ' exact-endgame' : ''}]`,
+      `[${MODEL} ${ITERS}iters${MODEL === 'rollout' ? ` rinner=${RINNER}` : ''} seed=${SEED}${FOUL_W !== undefined ? ` foulW=${FOUL_W}` : ''}${KEEPK > 0 ? ` keepK=${KEEPK}` : ''}${EXACT ? ' exact-endgame' : ''}]`,
     )
     console.log(
       `通算成績 ハンド数 ${HANDS} / FL突入率 ${pct(totalEntries)}% / ファウル率 ${pct(fouls)}%`,
