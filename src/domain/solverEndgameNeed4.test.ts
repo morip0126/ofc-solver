@@ -7,6 +7,7 @@ import { type Card, parseCards, remainingDeck } from './cards'
 import { combinations, mulberry32, shuffle } from './combinatorics'
 import {
   type Board,
+  createNeed4Evaluator,
   evaluateBoardEndgame,
   evaluateBoardEndgameNeed4,
   generateStreetBoards,
@@ -99,6 +100,21 @@ describe('endgame need=4 two-step exact (M2)', () => {
     const exact = evaluateBoardEndgameNeed4(board, dead, ULTIMATE, { jokers: true })
     const ref = referenceNeed4(board, dead, unseen)
     expect(exact.score).toBeCloseTo(ref, 9)
+  })
+
+  it('スケルトン付きエバリュエータのスコアが evaluateBoardEndgameNeed4 と厳密一致する', () => {
+    const rng = mulberry32(0x5ce1)
+    const ev = createNeed4Evaluator(ULTIMATE, { jokers: true })
+    for (let t = 0; t < 15; t++) {
+      const { board, deckRest } = randomCellNeed4(rng)
+      // 同じ盤面形で捨て札を変えた2ケース（スケルトン再利用パスを通す）
+      for (const deadN of [3, 5]) {
+        const dead = deckRest.slice(0, deadN)
+        const ref = evaluateBoardEndgameNeed4(board, dead, ULTIMATE, { jokers: true }).score
+        const fast = ev.score(board, dead)
+        expect(fast).toBeCloseTo(ref, 9)
+      }
+    }
   })
 
   it('フルデッキ（40枚）の計算時間を計測する', () => {

@@ -7,7 +7,7 @@
 import { appendFileSync, existsSync, readFileSync } from 'node:fs'
 import { describe, it } from 'vitest'
 import { type Card, parseCards, remainingDeck } from './cards'
-import { type Board, evaluateBoardEndgameNeed4 } from './solver'
+import { type Board, createNeed4Evaluator } from './solver'
 import { ULTIMATE } from './variants'
 
 const OUT = process.env.CELL_SOLVE_OUT ?? ''
@@ -136,10 +136,10 @@ describe.skipIf(!OUT || TO <= FROM)('cell solve phase A (set CELL_SOLVE_OUT/FROM
     }
 
     const v3memo = new Map<string, number>()
-    // g テーブル（11枚盤面・山非依存）の呼び出し横断キャッシュ。1 エントリ ~14KB なので
-    // 上限で世代交代（局所性はキー昇順処理でおおむね保たれる）。
-    const fgCache = new Map<string, unknown>()
-    const FG_CAP = Number(process.env.CELL_SOLVE_FG_CAP ?? 80000)
+    // スケルトン付きエバリュエータ: 盤面形が同じ B9（捨て札違い）は構築ゼロで評価できる
+    const ev = createNeed4Evaluator(ULTIMATE, { jokers: true }, {
+      skeletons: Number(process.env.CELL_SOLVE_SK_CAP ?? 30000),
+    })
     let v3calls = 0
     let v3hits = 0
     const v3 = (kid: S): number => {
@@ -150,10 +150,8 @@ describe.skipIf(!OUT || TO <= FROM)('cell solve phase A (set CELL_SOLVE_OUT/FROM
         return hit
       }
       v3calls++
-      if (fgCache.size > FG_CAP) fgCache.clear()
       const { board, dead } = materialize(kid)
-      const score = evaluateBoardEndgameNeed4(board, dead, ULTIMATE, { jokers: true }, fgCache)
-        .score
+      const score = ev.score(board, dead)
       v3memo.set(k, score)
       return score
     }

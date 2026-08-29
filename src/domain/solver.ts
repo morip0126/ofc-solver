@@ -2059,6 +2059,141 @@ function endgameNeed2Rank(
   }
 }
 
+/**
+ * セル・ソルバー用の need=4 スコア専用エバリュエータ（M3 フェーズA）。
+ * 「盤面の形（各段のランク多重集合）が同じ盤面は、捨て札・山に依らず子候補集合と
+ * g テーブルが同一」という性質を使い、盤面形ごとの候補スケルトン
+ * （ドロークラス → 子 g テーブル参照の配列）をキャッシュする。同型盤面の2回目以降は
+ * テーブル構築ゼロで、重み付き内積のみで厳密スコアが出る。
+ * スコアは evaluateBoardEndgameNeed4().score と厳密一致（solverEndgameNeed4.test.ts）。
+ */
+export function createNeed4Evaluator(
+  variant: Variant,
+  options: RankOptions = {},
+  caps: { skeletons?: number } = {},
+): { score(board: Board, dead: readonly Card[]): number; stats(): { skeletons: number; gTables: number } } {
+  const jokers = options.jokers ?? false
+  const foulWeight = options.foulWeight ?? DEFAULT_FOUL_WEIGHT
+  const flValues =
+    options.flValues ??
+    (variant.restayKeepsCount
+      ? jokers
+        ? DEFAULT_FL_VALUES_JOKER
+        : DEFAULT_FL_VALUES
+      : jokers
+        ? PROGRESSIVE_FL_VALUES_JOKER
+        : PROGRESSIVE_FL_VALUES)
+  const skCap = caps.skeletons ?? 30_000
+  const nCls = CLASSES.length
+  const gCache = new Map<string, GTab>()
+  // スケルトン: CLASSES と同順。クラス ci の子 g テーブル配列（物理的に不可能なクラスは空）。
+  type Skeleton = GTab[][]
+  const skCache = new Map<string, Skeleton>()
+  const wcls = new Float64Array(nCls)
+  const rows: RowKey[] = ['top', 'middle', 'bottom']
+
+  const buildSkeleton = (board: Board): Skeleton => {
+    const cap = remainingCap(board)
+    const boardJokers =
+      board.top.filter((c) => c.rank === 0).length +
+      board.middle.filter((c) => c.rank === 0).length +
+      board.bottom.filter((c) => c.rank === 0).length
+    const sk: Skeleton = new Array(nCls)
+    for (let ci = 0; ci < nCls; ci++) {
+      const { a, b, c } = CLASSES[ci]
+      const clsJokers = (a === 0 ? 1 : 0) + (b === 0 ? 1 : 0) + (c === 0 ? 1 : 0)
+      if (clsJokers + boardJokers > 2) {
+        sk[ci] = []
+        continue
+      }
+      const pairs: [number, number][] = [
+        [a, b],
+        [a, c],
+        [b, c],
+      ]
+      const seenChild = new Set<string>()
+      const cands: GTab[] = []
+      for (const [p, q] of pairs) {
+        const ka: Card = p === 0 ? JOKER_CARDS[0] : { rank: p as Rank, suit: SUITS[1] }
+        const kb: Card =
+          q === 0 ? JOKER_CARDS[p === 0 ? 1 : 0] : { rank: q as Rank, suit: SUITS[2] }
+        for (const rowX of rows) {
+          for (const rowY of rows) {
+            const needX = rowX === rowY ? 2 : 1
+            if (cap[rowX] < needX) continue
+            if (rowX !== rowY && cap[rowY] < 1) continue
+            const b11: Board = {
+              top: [...board.top],
+              middle: [...board.middle],
+              bottom: [...board.bottom],
+            }
+            b11[rowX].push(ka)
+            b11[rowY].push(kb)
+            const key = `${rankRowKey(b11.top)}|${rankRowKey(b11.middle)}|${rankRowKey(b11.bottom)}`
+            if (seenChild.has(key)) continue
+            seenChild.add(key)
+            let gtab = gCache.get(key)
+            if (!gtab) {
+              gtab = buildGFor(buildFTableFor(b11, variant, flValues), flValues, foulWeight)
+              gCache.set(key, gtab)
+            }
+            cands.push(gtab)
+          }
+        }
+      }
+      sk[ci] = cands
+    }
+    return sk
+  }
+
+  const cnt9 = new Array<number>(15).fill(0)
+  const cnt11 = new Array<number>(15).fill(0)
+
+  const score = (board: Board, dead: readonly Card[]): number => {
+    const seen = [...board.top, ...board.middle, ...board.bottom, ...dead]
+    const deck = remainingDeck(seen, jokers)
+    cnt9.fill(0)
+    for (const c of deck) cnt9[c.rank]++
+    const key9 = `${rankRowKey(board.top)}|${rankRowKey(board.middle)}|${rankRowKey(board.bottom)}`
+    let sk = skCache.get(key9)
+    if (!sk) {
+      if (skCache.size >= skCap) {
+        // スケルトンと g テーブルは相互参照なので、世代交代はまとめて行う
+        skCache.clear()
+        gCache.clear()
+      }
+      sk = buildSkeleton(board)
+      skCache.set(key9, sk)
+    }
+    let acc = 0
+    let tot = 0
+    for (let ci = 0; ci < nCls; ci++) {
+      const cands = sk[ci]
+      if (cands.length === 0) continue
+      const cls = CLASSES[ci]
+      const wD = classWeight(cls, cnt9)
+      if (wD === 0) continue
+      for (let r = 0; r < 15; r++) cnt11[r] = cnt9[r]
+      cnt11[cls.a]--
+      cnt11[cls.b]--
+      cnt11[cls.c]--
+      const nW = fillWeights(cnt11, wcls)
+      let best = Number.NEGATIVE_INFINITY
+      for (const g of cands) {
+        let s = 0
+        const arr = g.scoreEff
+        for (let k = 0; k < nCls; k++) s += wcls[k] * arr[k]
+        if (s > best) best = s
+      }
+      acc += (best / nW) * wD
+      tot += wD
+    }
+    return acc / tot
+  }
+
+  return { score, stats: () => ({ skeletons: skCache.size, gTables: gCache.size }) }
+}
+
 /** ランク度数ベクトル（0=ジョーカー, 2..14）から3枚ドローの多重集合クラスを列挙する。 */
 function forEachDrawClass3(
   cnt: readonly number[],
@@ -2113,6 +2248,162 @@ type GTab = {
   foul: Uint8Array
 }
 
+type FEntry = { score: number; roys: number; fl: number } | null
+
+const rankRowKey = (cards: readonly Card[]): string =>
+  cards
+    .map((c) => c.rank)
+    .sort((a, b) => a - b)
+    .join()
+
+/** 11枚盤面（残り2マス）の f テーブルを構築（山非依存・スートは結果に影響しない前提）。 */
+function buildFTableFor(
+  b11: Board,
+  variant: Variant,
+  flValues: Readonly<Record<number, number>>,
+): FEntry[] {
+  const cap11 = remainingCap(b11)
+  const b11Jokers =
+    b11.top.filter((c) => c.rank === 0).length +
+    b11.middle.filter((c) => c.rank === 0).length +
+    b11.bottom.filter((c) => c.rank === 0).length
+  const rowA: RowKey = cap11.top > 0 ? 'top' : cap11.middle > 0 ? 'middle' : 'bottom'
+  const capA = cap11[rowA]
+  let rowB: RowKey | null = null
+  if (capA === 1) {
+    rowB = rowA === 'top' ? (cap11.middle > 0 ? 'middle' : 'bottom') : 'bottom'
+  }
+  const topBuf: Card[] = b11.top.slice()
+  topBuf.length = 3
+  const midBuf: Card[] = b11.middle.slice()
+  midBuf.length = 5
+  const botBuf: Card[] = b11.bottom.slice()
+  botBuf.length = 5
+  const bufOf = (r: RowKey) => (r === 'top' ? topBuf : r === 'middle' ? midBuf : botBuf)
+  const lenOf = (r: RowKey) =>
+    r === 'top' ? b11.top.length : r === 'middle' ? b11.middle.length : b11.bottom.length
+  const topFixed = cap11.top === 0 ? key3(topBuf) : 0
+  const midFixed = cap11.middle === 0 ? key5(midBuf) : 0
+  const botFixed = cap11.bottom === 0 ? key5(botBuf) : 0
+  const finishScore = (): FEntry => {
+    const topKey = cap11.top === 0 ? topFixed : key3(topBuf)
+    const midKey0 = cap11.middle === 0 ? midFixed : key5(midBuf)
+    const botKey = cap11.bottom === 0 ? botFixed : key5(botBuf)
+    let mKey = midKey0
+    let tKey = topKey
+    if (botKey < mKey) {
+      mKey = hasJoker(midBuf, 5) ? key5AtMost(midBuf, botKey) : -1
+      if (mKey < 0) return null
+    }
+    if (mKey < tKey) {
+      tKey = hasJoker(topBuf, 3) ? key3AtMost(topBuf, mKey) : -1
+      if (tKey < 0) return null
+    }
+    const roys = royaltyBottomKey(botKey) + royaltyMiddleKey(mKey) + royaltyTopKey(tKey)
+    const fl = flEntryFromTopKey(tKey, variant)
+    return { score: roys + (fl > 0 ? (flValues[fl] ?? 0) : 0), roys, fl }
+  }
+  const table: FEntry[] = new Array(15 * 15).fill(null)
+  for (let r1 = 0; r1 < 15; r1++) {
+    if (r1 === 1) continue
+    for (let r2 = r1; r2 < 15; r2++) {
+      if (r2 === 1) continue
+      // デッキ全体でジョーカーは2枚なので、盤面のワイルドと合わせて2枚を超えるペアは
+      // 物理的に不可能（重み0で参照もされない）。1段3ワイルドの評価例外を防ぐためスキップ。
+      if ((r1 === 0 ? 1 : 0) + (r2 === 0 ? 1 : 0) + b11Jokers > 2) continue
+      const ka: Card = r1 === 0 ? JOKER_CARDS[0] : { rank: r1 as Rank, suit: SUITS[3] }
+      const kb: Card =
+        r2 === 0 ? JOKER_CARDS[r1 === 0 ? 1 : 0] : { rank: r2 as Rank, suit: SUITS[0] }
+      let best: FEntry
+      if (capA === 2) {
+        const buf = bufOf(rowA)
+        const base = lenOf(rowA)
+        buf[base] = ka
+        buf[base + 1] = kb
+        best = finishScore()
+      } else {
+        const bufA = bufOf(rowA)
+        const bufB = bufOf(rowB!)
+        const baseA = lenOf(rowA)
+        const baseB = lenOf(rowB!)
+        bufA[baseA] = ka
+        bufB[baseB] = kb
+        best = finishScore()
+        bufA[baseA] = kb
+        bufB[baseB] = ka
+        const alt = finishScore()
+        if (alt && (best === null || alt.score > best.score)) best = alt
+      }
+      table[r1 * 15 + r2] = best
+    }
+  }
+  return table
+}
+
+/** f テーブルから g テーブル（クラス→最終最適応答）を前計算する。 */
+function buildGFor(
+  ftab: FEntry[],
+  flValues: Readonly<Record<number, number>>,
+  foulWeight: number,
+): GTab {
+  const nCls = CLASSES.length
+  const g: GTab = {
+    scoreEff: new Float64Array(nCls),
+    roys: new Float64Array(nCls),
+    flv: new Float64Array(nCls),
+    fl: new Int8Array(nCls),
+    foul: new Uint8Array(nCls),
+  }
+  for (let ci = 0; ci < nCls; ci++) {
+    const { a, b, c } = CLASSES[ci]
+    const e0 = ftab[a * 15 + b]
+    const e1 = ftab[a * 15 + c]
+    const e2 = ftab[b * 15 + c]
+    let best: FEntry = e0
+    if (e1 && (!best || e1.score > best.score)) best = e1
+    if (e2 && (!best || e2.score > best.score)) best = e2
+    if (!best) {
+      g.scoreEff[ci] = -foulWeight
+      g.foul[ci] = 1
+    } else {
+      g.scoreEff[ci] = best.score
+      g.roys[ci] = best.roys
+      g.fl[ci] = best.fl
+      g.flv[ci] = best.fl > 0 ? (flValues[best.fl] ?? 0) : 0
+    }
+  }
+  return g
+}
+
+/** 1クラスの超幾何重み（cnt 中の組合せ数）。 */
+function classWeight(cls: Cls, cnt: readonly number[]): number {
+  const ca = cnt[cls.a]
+  if (ca === 0) return 0
+  if (cls.pat === 0) return ca >= 3 ? (ca * (ca - 1) * (ca - 2)) / 6 : 0
+  if (cls.pat === 1) {
+    const cc = cnt[cls.c]
+    return ca >= 2 && cc !== 0 ? ((ca * (ca - 1)) / 2) * cc : 0
+  }
+  if (cls.pat === 2) {
+    const cb = cnt[cls.b]
+    return cb >= 2 ? ca * ((cb * (cb - 1)) / 2) : 0
+  }
+  const cb = cnt[cls.b]
+  const cc = cnt[cls.c]
+  return cb !== 0 && cc !== 0 ? ca * cb * cc : 0
+}
+
+/** 全クラスの重みベクトルを埋めて総重量を返す。 */
+function fillWeights(cnt: readonly number[], wcls: Float64Array): number {
+  let n = 0
+  for (let ci = 0; ci < CLASSES.length; ci++) {
+    const w = classWeight(CLASSES[ci], cnt)
+    wcls[ci] = w
+    n += w
+  }
+  return n
+}
+
 /**
  * need=4（第2ストリート決定後の盤面）のランク空間厳密評価（M2）。
  *   V3 = E[次ドロー3枚クラス]( max[2枚配置×1枚捨て] V4(子盤面) )
@@ -2153,125 +2444,7 @@ export function evaluateBoardEndgameNeed4(
   const cnt9 = new Array<number>(15).fill(0)
   for (const c of deck) cnt9[c.rank]++
 
-  type FEntry = { score: number; roys: number; fl: number } | null
   const fCache = (fgCacheShared ?? new Map()) as Map<string, GTab>
-
-  const buildG = (ftab: FEntry[]): GTab => {
-    const nCls = CLASSES.length
-    const g: GTab = {
-      scoreEff: new Float64Array(nCls),
-      roys: new Float64Array(nCls),
-      flv: new Float64Array(nCls),
-      fl: new Int8Array(nCls),
-      foul: new Uint8Array(nCls),
-    }
-    for (let ci = 0; ci < nCls; ci++) {
-      const { a, b, c } = CLASSES[ci]
-      const e0 = ftab[a * 15 + b]
-      const e1 = ftab[a * 15 + c]
-      const e2 = ftab[b * 15 + c]
-      let best: FEntry = e0
-      if (e1 && (!best || e1.score > best.score)) best = e1
-      if (e2 && (!best || e2.score > best.score)) best = e2
-      if (!best) {
-        g.scoreEff[ci] = -foulWeight
-        g.foul[ci] = 1
-      } else {
-        g.scoreEff[ci] = best.score
-        g.roys[ci] = best.roys
-        g.fl[ci] = best.fl
-        g.flv[ci] = best.fl > 0 ? (flValues[best.fl] ?? 0) : 0
-      }
-    }
-    return g
-  }
-
-  const rowKeyOf = (cards: readonly Card[]): string =>
-    cards
-      .map((c) => c.rank)
-      .sort((a, b) => a - b)
-      .join()
-
-  /** 11枚盤面（残り2マス）の f テーブルを構築。 */
-  const buildFTable = (b11: Board): FEntry[] => {
-    const cap11 = remainingCap(b11)
-    const b11Jokers =
-      b11.top.filter((c) => c.rank === 0).length +
-      b11.middle.filter((c) => c.rank === 0).length +
-      b11.bottom.filter((c) => c.rank === 0).length
-    const rowA: RowKey = cap11.top > 0 ? 'top' : cap11.middle > 0 ? 'middle' : 'bottom'
-    const capA = cap11[rowA]
-    let rowB: RowKey | null = null
-    if (capA === 1) {
-      rowB = rowA === 'top' ? (cap11.middle > 0 ? 'middle' : 'bottom') : 'bottom'
-    }
-    const topBuf: Card[] = b11.top.slice()
-    topBuf.length = 3
-    const midBuf: Card[] = b11.middle.slice()
-    midBuf.length = 5
-    const botBuf: Card[] = b11.bottom.slice()
-    botBuf.length = 5
-    const bufOf = (r: RowKey) => (r === 'top' ? topBuf : r === 'middle' ? midBuf : botBuf)
-    const lenOf = (r: RowKey) =>
-      r === 'top' ? b11.top.length : r === 'middle' ? b11.middle.length : b11.bottom.length
-    const topFixed = cap11.top === 0 ? key3(topBuf) : 0
-    const midFixed = cap11.middle === 0 ? key5(midBuf) : 0
-    const botFixed = cap11.bottom === 0 ? key5(botBuf) : 0
-    const finishScore = (): FEntry => {
-      const topKey = cap11.top === 0 ? topFixed : key3(topBuf)
-      const midKey0 = cap11.middle === 0 ? midFixed : key5(midBuf)
-      const botKey = cap11.bottom === 0 ? botFixed : key5(botBuf)
-      let mKey = midKey0
-      let tKey = topKey
-      if (botKey < mKey) {
-        mKey = hasJoker(midBuf, 5) ? key5AtMost(midBuf, botKey) : -1
-        if (mKey < 0) return null
-      }
-      if (mKey < tKey) {
-        tKey = hasJoker(topBuf, 3) ? key3AtMost(topBuf, mKey) : -1
-        if (tKey < 0) return null
-      }
-      const roys = royaltyBottomKey(botKey) + royaltyMiddleKey(mKey) + royaltyTopKey(tKey)
-      const fl = flEntryFromTopKey(tKey, variant)
-      return { score: roys + (fl > 0 ? (flValues[fl] ?? 0) : 0), roys, fl }
-    }
-    const table: FEntry[] = new Array(15 * 15).fill(null)
-    for (let r1 = 0; r1 < 15; r1++) {
-      if (r1 === 1) continue
-      for (let r2 = r1; r2 < 15; r2++) {
-        if (r2 === 1) continue
-        // デッキ全体でジョーカーは2枚なので、盤面のワイルドと合わせて2枚を超えるペアは
-        // 物理的に不可能（v4 でも重み0で参照されない）。構築すると1段3ワイルドの評価例外を
-        // 起こしうるためスキップする。
-        if ((r1 === 0 ? 1 : 0) + (r2 === 0 ? 1 : 0) + b11Jokers > 2) continue
-        const ka: Card = r1 === 0 ? JOKER_CARDS[0] : { rank: r1 as Rank, suit: SUITS[3] }
-        const kb: Card =
-          r2 === 0 ? JOKER_CARDS[r1 === 0 ? 1 : 0] : { rank: r2 as Rank, suit: SUITS[0] }
-        let best: FEntry
-        if (capA === 2) {
-          const buf = bufOf(rowA)
-          const base = lenOf(rowA)
-          buf[base] = ka
-          buf[base + 1] = kb
-          best = finishScore()
-        } else {
-          const bufA = bufOf(rowA)
-          const bufB = bufOf(rowB!)
-          const baseA = lenOf(rowA)
-          const baseB = lenOf(rowB!)
-          bufA[baseA] = ka
-          bufB[baseB] = kb
-          best = finishScore()
-          bufA[baseA] = kb
-          bufB[baseB] = ka
-          const alt = finishScore()
-          if (alt && (best === null || alt.score > best.score)) best = alt
-        }
-        table[r1 * 15 + r2] = best
-      }
-    }
-    return table
-  }
 
   type ChildValue = {
     score: number
@@ -2284,33 +2457,6 @@ export function evaluateBoardEndgameNeed4(
   const nCls = CLASSES.length
   // D ごとの超幾何重み（密ベクトル・使い回しのスクラッチ）。Σ w×scoreEff が厳密な V4 スコア。
   const wcls = new Float64Array(nCls)
-  /** cnt11 から重みベクトルを構築して総重量を返す。 */
-  const buildW = (cnt11: readonly number[]): number => {
-    let n = 0
-    for (let ci = 0; ci < nCls; ci++) {
-      const cls = CLASSES[ci]
-      const ca = cnt11[cls.a]
-      let w = 0
-      if (ca !== 0) {
-        if (cls.pat === 0) {
-          if (ca >= 3) w = (ca * (ca - 1) * (ca - 2)) / 6
-        } else if (cls.pat === 1) {
-          const cc = cnt11[cls.c]
-          if (ca >= 2 && cc !== 0) w = ((ca * (ca - 1)) / 2) * cc
-        } else if (cls.pat === 2) {
-          const cb = cnt11[cls.b]
-          if (cb >= 2) w = ca * ((cb * (cb - 1)) / 2)
-        } else {
-          const cb = cnt11[cls.b]
-          const cc = cnt11[cls.c]
-          if (cb !== 0 && cc !== 0) w = ca * cb * cc
-        }
-      }
-      wcls[ci] = w
-      n += w
-    }
-    return n
-  }
   /** 密内積による V4 スコア（÷総重量前）。子の argmax 選定用。 */
   const denseScore = (g: GTab): number => {
     let s = 0
@@ -2374,7 +2520,7 @@ export function evaluateBoardEndgameNeed4(
     ]
     // 子（2枚配置の11枚盤面）を集め、密内積スコアで argmax を選んでから
     // その子だけ成分（ロイヤリティ・FL・ファウル率）を厳密集計する。
-    const nW = buildW(cnt11)
+    const nW = fillWeights(cnt11, wcls)
     const seenChild = new Set<string>()
     const cands: GTab[] = []
     for (const [p, q] of pairs) {
@@ -2392,12 +2538,12 @@ export function evaluateBoardEndgameNeed4(
           }
           b11[rowX].push(ka)
           b11[rowY].push(kb)
-          const key = `${rowKeyOf(b11.top)}|${rowKeyOf(b11.middle)}|${rowKeyOf(b11.bottom)}`
+          const key = `${rankRowKey(b11.top)}|${rankRowKey(b11.middle)}|${rankRowKey(b11.bottom)}`
           if (seenChild.has(key)) continue
           seenChild.add(key)
           let gtab = fCache.get(key)
           if (!gtab) {
-            gtab = buildG(buildFTable(b11))
+            gtab = buildGFor(buildFTableFor(b11, variant, flValues), flValues, foulWeight)
             fCache.set(key, gtab)
           }
           cands.push(gtab)
