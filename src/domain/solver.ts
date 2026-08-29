@@ -2102,8 +2102,16 @@ const CLASSES: Cls[] = (() => {
       }
   return out
 })()
-// g テーブル: クラス位置 → そのドロークラスでの最終最適応答（f から前計算、山非依存）
-type GTab = { score: Float64Array; roys: Float64Array; flv: Float64Array; fl: Int8Array }
+// g テーブル: クラス位置 → そのドロークラスでの最終最適応答（f から前計算、山非依存）。
+// scoreEff はファウルクラスを −foulWeight に置換済み（重み0クラスとの積で NaN を出さず、
+// 密な内積 Σ w×scoreEff がそのまま厳密な V4 スコアになる）。foul はファウルマスク。
+type GTab = {
+  scoreEff: Float64Array
+  roys: Float64Array
+  flv: Float64Array
+  fl: Int8Array
+  foul: Uint8Array
+}
 
 /**
  * need=4（第2ストリート決定後の盤面）のランク空間厳密評価（M2）。
@@ -2151,10 +2159,11 @@ export function evaluateBoardEndgameNeed4(
   const buildG = (ftab: FEntry[]): GTab => {
     const nCls = CLASSES.length
     const g: GTab = {
-      score: new Float64Array(nCls),
+      scoreEff: new Float64Array(nCls),
       roys: new Float64Array(nCls),
       flv: new Float64Array(nCls),
       fl: new Int8Array(nCls),
+      foul: new Uint8Array(nCls),
     }
     for (let ci = 0; ci < nCls; ci++) {
       const { a, b, c } = CLASSES[ci]
@@ -2165,9 +2174,10 @@ export function evaluateBoardEndgameNeed4(
       if (e1 && (!best || e1.score > best.score)) best = e1
       if (e2 && (!best || e2.score > best.score)) best = e2
       if (!best) {
-        g.score[ci] = Number.NEGATIVE_INFINITY
+        g.scoreEff[ci] = -foulWeight
+        g.foul[ci] = 1
       } else {
-        g.score[ci] = best.score
+        g.scoreEff[ci] = best.score
         g.roys[ci] = best.roys
         g.fl[ci] = best.fl
         g.flv[ci] = best.fl > 0 ? (flValues[best.fl] ?? 0) : 0
@@ -2271,49 +2281,62 @@ export function evaluateBoardEndgameNeed4(
     flCounts: Record<number, number>
   }
 
-  /** V4: g テーブル × 最終ドロークラスの超幾何重みで期待値を閉じる。 */
-  const v4 = (g: GTab, cnt11: readonly number[]): ChildValue => {
+  const nCls = CLASSES.length
+  // D ごとの超幾何重み（密ベクトル・使い回しのスクラッチ）。Σ w×scoreEff が厳密な V4 スコア。
+  const wcls = new Float64Array(nCls)
+  /** cnt11 から重みベクトルを構築して総重量を返す。 */
+  const buildW = (cnt11: readonly number[]): number => {
     let n = 0
+    for (let ci = 0; ci < nCls; ci++) {
+      const cls = CLASSES[ci]
+      const ca = cnt11[cls.a]
+      let w = 0
+      if (ca !== 0) {
+        if (cls.pat === 0) {
+          if (ca >= 3) w = (ca * (ca - 1) * (ca - 2)) / 6
+        } else if (cls.pat === 1) {
+          const cc = cnt11[cls.c]
+          if (ca >= 2 && cc !== 0) w = ((ca * (ca - 1)) / 2) * cc
+        } else if (cls.pat === 2) {
+          const cb = cnt11[cls.b]
+          if (cb >= 2) w = ca * ((cb * (cb - 1)) / 2)
+        } else {
+          const cb = cnt11[cls.b]
+          const cc = cnt11[cls.c]
+          if (cb !== 0 && cc !== 0) w = ca * cb * cc
+        }
+      }
+      wcls[ci] = w
+      n += w
+    }
+    return n
+  }
+  /** 密内積による V4 スコア（÷総重量前）。子の argmax 選定用。 */
+  const denseScore = (g: GTab): number => {
+    let s = 0
+    const arr = g.scoreEff
+    for (let ci = 0; ci < nCls; ci++) s += wcls[ci] * arr[ci]
+    return s
+  }
+  /** 選ばれた子の成分（ロイヤリティ・FL・ファウル率）を wcls で厳密集計する。 */
+  const v4Full = (g: GTab, n: number): ChildValue => {
     let scoreSum = 0
     let roySum = 0
     let flvSum = 0
     let foulSum = 0
-    const flCountArr = [0, 0, 0, 0] // 14..17
-    const nCls = CLASSES.length
+    const flCountArr = [0, 0, 0, 0]
     for (let ci = 0; ci < nCls; ci++) {
-      const cls = CLASSES[ci]
-      const ca = cnt11[cls.a]
-      if (ca === 0) continue
-      let w: number
-      if (cls.pat === 0) {
-        if (ca < 3) continue
-        w = (ca * (ca - 1) * (ca - 2)) / 6
-      } else if (cls.pat === 1) {
-        const cc = cnt11[cls.c]
-        if (ca < 2 || cc === 0) continue
-        w = ((ca * (ca - 1)) / 2) * cc
-      } else if (cls.pat === 2) {
-        const cb = cnt11[cls.b]
-        if (cb < 2) continue
-        w = ca * ((cb * (cb - 1)) / 2)
-      } else {
-        const cb = cnt11[cls.b]
-        const cc = cnt11[cls.c]
-        if (cb === 0 || cc === 0) continue
-        w = ca * cb * cc
-      }
-      n += w
-      const s = g.score[ci]
-      if (s === Number.NEGATIVE_INFINITY) {
+      const w = wcls[ci]
+      if (w === 0) continue
+      scoreSum += w * g.scoreEff[ci]
+      if (g.foul[ci]) {
         foulSum += w
-        scoreSum += -foulWeight * w
-      } else {
-        scoreSum += s * w
-        roySum += g.roys[ci] * w
-        flvSum += g.flv[ci] * w
-        const fl = g.fl[ci]
-        if (fl > 0) flCountArr[fl - 14] += w
+        continue
       }
+      roySum += w * g.roys[ci]
+      flvSum += w * g.flv[ci]
+      const fl = g.fl[ci]
+      if (fl > 0) flCountArr[fl - 14] += w
     }
     const out: ChildValue = {
       score: scoreSum / n,
@@ -2349,8 +2372,11 @@ export function evaluateBoardEndgameNeed4(
       [a, c],
       [b, c],
     ]
-    let best: ChildValue | null = null
+    // 子（2枚配置の11枚盤面）を集め、密内積スコアで argmax を選んでから
+    // その子だけ成分（ロイヤリティ・FL・ファウル率）を厳密集計する。
+    const nW = buildW(cnt11)
     const seenChild = new Set<string>()
+    const cands: GTab[] = []
     for (const [p, q] of pairs) {
       const ka: Card = p === 0 ? JOKER_CARDS[0] : { rank: p as Rank, suit: SUITS[1] }
       const kb: Card = q === 0 ? JOKER_CARDS[p === 0 ? 1 : 0] : { rank: q as Rank, suit: SUITS[2] }
@@ -2374,13 +2400,21 @@ export function evaluateBoardEndgameNeed4(
             gtab = buildG(buildFTable(b11))
             fCache.set(key, gtab)
           }
-          const v = v4(gtab, cnt11)
-          if (!best || v.score > best.score) best = v
+          cands.push(gtab)
         }
       }
     }
+    let bestG: GTab | null = null
+    let bestS = Number.NEGATIVE_INFINITY
+    for (const gtab of cands) {
+      const s = denseScore(gtab)
+      if (s > bestS) {
+        bestS = s
+        bestG = gtab
+      }
+    }
     // 空きが4マスあるので合法手は必ず存在する
-    const chosen = best!
+    const chosen = v4Full(bestG!, nW)
     totalW += wD
     scoreSum += chosen.score * wD
     scoreSum2 += chosen.score * chosen.score * wD
