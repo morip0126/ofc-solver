@@ -2083,6 +2083,28 @@ function forEachDrawClass3(
   }
 }
 
+// ---- need=4 厳密評価の共有定義 -------------------------------------------------
+// クラス表: 最終ドロー3枚の多重集合クラス（全ランク空間で固定・重みは cnt から都度計算）
+type Cls = { a: number; b: number; c: number; pat: number }
+const CLASSES: Cls[] = (() => {
+  const out: Cls[] = []
+  const rankList: number[] = [0]
+  for (let r = 2; r <= 14; r++) rankList.push(r)
+  for (let i = 0; i < rankList.length; i++)
+    for (let j = i; j < rankList.length; j++)
+      for (let k = j; k < rankList.length; k++) {
+        const a = rankList[i]
+        const b = rankList[j]
+        const c = rankList[k]
+        if (a === 0 && c === 0) continue // ジョーカー3枚は存在しない
+        const pat = a === b && b === c ? 0 : a === b ? 1 : b === c ? 2 : 3
+        out.push({ a, b, c, pat })
+      }
+  return out
+})()
+// g テーブル: クラス位置 → そのドロークラスでの最終最適応答（f から前計算、山非依存）
+type GTab = { score: Float64Array; roys: Float64Array; flv: Float64Array; fl: Int8Array }
+
 /**
  * need=4（第2ストリート決定後の盤面）のランク空間厳密評価（M2）。
  *   V3 = E[次ドロー3枚クラス]( max[2枚配置×1枚捨て] V4(子盤面) )
@@ -2096,6 +2118,9 @@ export function evaluateBoardEndgameNeed4(
   dead: readonly Card[],
   variant: Variant,
   options: RankOptions = {},
+  // g テーブル（11枚盤面キー・山非依存）の呼び出し横断キャッシュ。同一の variant/flValues
+  // で使い回すこと（セル・ソルバー用。サイズ管理は呼び出し側の責任）。
+  fgCacheShared?: Map<string, unknown>,
 ): BoardMetric {
   const jokers = options.jokers ?? false
   const foulWeight = options.foulWeight ?? DEFAULT_FOUL_WEIGHT
@@ -2121,26 +2146,7 @@ export function evaluateBoardEndgameNeed4(
   for (const c of deck) cnt9[c.rank]++
 
   type FEntry = { score: number; roys: number; fl: number } | null
-  // クラス表: 最終ドロー3枚の多重集合クラス（全ランク空間で固定・重みは cnt から都度計算）
-  type Cls = { a: number; b: number; c: number; pat: number }
-  const CLASSES: Cls[] = []
-  {
-    const rankList: number[] = [0]
-    for (let r = 2; r <= 14; r++) rankList.push(r)
-    for (let i = 0; i < rankList.length; i++)
-      for (let j = i; j < rankList.length; j++)
-        for (let k = j; k < rankList.length; k++) {
-          const a = rankList[i]
-          const b = rankList[j]
-          const c = rankList[k]
-          if (a === 0 && c === 0) continue // ジョーカー3枚は存在しない
-          const pat = a === b && b === c ? 0 : a === b ? 1 : b === c ? 2 : 3
-          CLASSES.push({ a, b, c, pat })
-        }
-  }
-  // g テーブル: クラス位置 → そのドロークラスでの最終最適応答（f から前計算、山非依存）
-  type GTab = { score: Float64Array; roys: Float64Array; flv: Float64Array; fl: Int8Array }
-  const fCache = new Map<string, GTab>()
+  const fCache = (fgCacheShared ?? new Map()) as Map<string, GTab>
 
   const buildG = (ftab: FEntry[]): GTab => {
     const nCls = CLASSES.length
