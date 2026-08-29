@@ -13,6 +13,8 @@ import { ULTIMATE } from './variants'
 const OUT = process.env.CELL_SOLVE_OUT ?? ''
 const FROM = Number(process.env.CELL_SOLVE_FROM ?? 0)
 const TO = Number(process.env.CELL_SOLVE_TO ?? 0)
+/** V3 メモの永続化ファイル（チャンク再起動でメモが消えるのを防ぐ）。 */
+const MEMO = process.env.CELL_SOLVE_MEMO ?? ''
 
 const START: Board = { top: [], middle: parseCards('Kd Kh'), bottom: parseCards('6d 5h 3h') }
 const ROWS = ['top', 'middle', 'bottom'] as const
@@ -136,9 +138,31 @@ describe.skipIf(!OUT || TO <= FROM)('cell solve phase A (set CELL_SOLVE_OUT/FROM
     }
 
     const v3memo = new Map<string, number>()
+    if (MEMO && existsSync(MEMO)) {
+      const t = Date.now()
+      let text = readFileSync(MEMO, 'utf8')
+      // プロセス死で最終行が途切れている可能性があるので、完全な行だけを信用する
+      if (!text.endsWith('\n')) text = text.slice(0, text.lastIndexOf('\n') + 1)
+      for (const line of text.split('\n')) {
+        const i = line.indexOf('\t')
+        if (i > 0) {
+          const v = Number(line.slice(i + 1))
+          if (Number.isFinite(v)) v3memo.set(line.slice(0, i), v)
+        }
+      }
+      console.log(`v3 memo loaded: ${v3memo.size} (${Date.now() - t}ms)`)
+    }
+    let memoBuf: string[] = []
+    const flushMemo = () => {
+      if (MEMO && memoBuf.length > 0) {
+        appendFileSync(MEMO, memoBuf.join(''))
+        memoBuf = []
+      }
+    }
     // スケルトン付きエバリュエータ: 盤面形が同じ B9（捨て札違い）は構築ゼロで評価できる
     const ev = createNeed4Evaluator(ULTIMATE, { jokers: true }, {
       skeletons: Number(process.env.CELL_SOLVE_SK_CAP ?? 30000),
+      gTables: Number(process.env.CELL_SOLVE_G_CAP ?? 120000),
     })
     let v3calls = 0
     let v3hits = 0
@@ -153,6 +177,10 @@ describe.skipIf(!OUT || TO <= FROM)('cell solve phase A (set CELL_SOLVE_OUT/FROM
       const { board, dead } = materialize(kid)
       const score = ev.score(board, dead)
       v3memo.set(k, score)
+      if (MEMO) {
+        memoBuf.push(`${k}\t${score.toFixed(6)}\n`)
+        if (memoBuf.length >= 500) flushMemo()
+      }
       return score
     }
 
@@ -176,6 +204,7 @@ describe.skipIf(!OUT || TO <= FROM)('cell solve phase A (set CELL_SOLVE_OUT/FROM
         totW += dc.w
       }
       appendFileSync(OUT, `${key}\t${(acc / totW).toFixed(6)}\n`)
+      flushMemo()
       doneCount++
       if (doneCount % 5 === 0) {
         const el = (Date.now() - t0) / 1000

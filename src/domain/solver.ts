@@ -2070,7 +2070,7 @@ function endgameNeed2Rank(
 export function createNeed4Evaluator(
   variant: Variant,
   options: RankOptions = {},
-  caps: { skeletons?: number } = {},
+  caps: { skeletons?: number; gTables?: number } = {},
 ): { score(board: Board, dead: readonly Card[]): number; stats(): { skeletons: number; gTables: number } } {
   const jokers = options.jokers ?? false
   const foulWeight = options.foulWeight ?? DEFAULT_FOUL_WEIGHT
@@ -2084,6 +2084,7 @@ export function createNeed4Evaluator(
         ? PROGRESSIVE_FL_VALUES_JOKER
         : PROGRESSIVE_FL_VALUES)
   const skCap = caps.skeletons ?? 30_000
+  const gCap = caps.gTables ?? 120_000
   const nCls = CLASSES.length
   const gCache = new Map<string, GTab>()
   // スケルトン: CLASSES と同順。クラス ci の子 g テーブル配列（物理的に不可能なクラスは空）。
@@ -2157,8 +2158,8 @@ export function createNeed4Evaluator(
     const key9 = `${rankRowKey(board.top)}|${rankRowKey(board.middle)}|${rankRowKey(board.bottom)}`
     let sk = skCache.get(key9)
     if (!sk) {
-      if (skCache.size >= skCap) {
-        // スケルトンと g テーブルは相互参照なので、世代交代はまとめて行う
+      if (skCache.size >= skCap || gCache.size >= gCap) {
+        // スケルトンと g テーブルは相互参照なので、世代交代はまとめて行う（OOM防止の上限）
         skCache.clear()
         gCache.clear()
       }
