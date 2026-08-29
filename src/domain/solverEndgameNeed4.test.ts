@@ -80,6 +80,27 @@ describe('endgame need=4 two-step exact (M2)', () => {
     expect(exact.score).toBeCloseTo(ref, 9)
   })
 
+  it('盤面にジョーカーがあっても評価できる（f テーブルの不能ジョーカーペア回帰）', () => {
+    // 9枚配置（need=4）: トップにジョーカー、ボトムは5枚完成
+    const board: Board = {
+      top: [{ rank: 0, suit: 'c' } as Card],
+      middle: [...START.middle, ...parseCards('9c')],
+      bottom: [...START.bottom, ...parseCards('4c 7s')],
+    }
+    const deck = remainingDeck(
+      [...board.top, ...board.middle, ...board.bottom],
+      true,
+    )
+    // 小さい山で参照とも一致させる（ジョーカー1枚は盤面、もう1枚を山に含める）
+    const jokers = deck.filter((c) => c.rank === 0)
+    const naturals = deck.filter((c) => c.rank !== 0)
+    const unseen = [...jokers, ...naturals.slice(0, 8 - jokers.length)]
+    const dead = naturals.slice(8 - jokers.length)
+    const exact = evaluateBoardEndgameNeed4(board, dead, ULTIMATE, { jokers: true })
+    const ref = referenceNeed4(board, dead, unseen)
+    expect(exact.score).toBeCloseTo(ref, 9)
+  })
+
   it('フルデッキ（40枚）の計算時間を計測する', () => {
     const rng = mulberry32(0x4e46)
     const { board } = randomCellNeed4(rng)

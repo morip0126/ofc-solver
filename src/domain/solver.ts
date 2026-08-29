@@ -2133,6 +2133,10 @@ export function evaluateBoardEndgameNeed4(
   /** 11枚盤面（残り2マス）の f テーブルを構築。 */
   const buildFTable = (b11: Board): FEntry[] => {
     const cap11 = remainingCap(b11)
+    const b11Jokers =
+      b11.top.filter((c) => c.rank === 0).length +
+      b11.middle.filter((c) => c.rank === 0).length +
+      b11.bottom.filter((c) => c.rank === 0).length
     const rowA: RowKey = cap11.top > 0 ? 'top' : cap11.middle > 0 ? 'middle' : 'bottom'
     const capA = cap11[rowA]
     let rowB: RowKey | null = null
@@ -2174,6 +2178,10 @@ export function evaluateBoardEndgameNeed4(
       if (r1 === 1) continue
       for (let r2 = r1; r2 < 15; r2++) {
         if (r2 === 1) continue
+        // デッキ全体でジョーカーは2枚なので、盤面のワイルドと合わせて2枚を超えるペアは
+        // 物理的に不可能（v4 でも重み0で参照されない）。構築すると1段3ワイルドの評価例外を
+        // 起こしうるためスキップする。
+        if ((r1 === 0 ? 1 : 0) + (r2 === 0 ? 1 : 0) + b11Jokers > 2) continue
         const ka: Card = r1 === 0 ? JOKER_CARDS[0] : { rank: r1 as Rank, suit: SUITS[3] }
         const kb: Card =
           r2 === 0 ? JOKER_CARDS[r1 === 0 ? 1 : 0] : { rank: r2 as Rank, suit: SUITS[0] }
