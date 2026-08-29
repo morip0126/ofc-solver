@@ -2177,7 +2177,7 @@ export function evaluateBoardEndgameNeed4(
         const ka: Card = r1 === 0 ? JOKER_CARDS[0] : { rank: r1 as Rank, suit: SUITS[3] }
         const kb: Card =
           r2 === 0 ? JOKER_CARDS[r1 === 0 ? 1 : 0] : { rank: r2 as Rank, suit: SUITS[0] }
-        let best: FEntry = null
+        let best: FEntry
         if (capA === 2) {
           const buf = bufOf(rowA)
           const base = lenOf(rowA)
@@ -2191,12 +2191,11 @@ export function evaluateBoardEndgameNeed4(
           const baseB = lenOf(rowB!)
           bufA[baseA] = ka
           bufB[baseB] = kb
-          let r = finishScore()
-          if (r && (!best || r.score > best.score)) best = r
+          best = finishScore()
           bufA[baseA] = kb
           bufB[baseB] = ka
-          r = finishScore()
-          if (r && (!best || r.score > best.score)) best = r
+          const alt = finishScore()
+          if (alt && (best === null || alt.score > best.score)) best = alt
         }
         table[r1 * 15 + r2] = best
       }
