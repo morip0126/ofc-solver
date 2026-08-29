@@ -2121,8 +2121,54 @@ export function evaluateBoardEndgameNeed4(
   for (const c of deck) cnt9[c.rank]++
 
   type FEntry = { score: number; roys: number; fl: number } | null
-  // f テーブル: idx = r1 * 15 + r2 (r1 ≤ r2) → 残す2枚が (r1, r2) のときの最終最適応答
-  const fCache = new Map<string, FEntry[]>()
+  // クラス表: 最終ドロー3枚の多重集合クラス（全ランク空間で固定・重みは cnt から都度計算）
+  type Cls = { a: number; b: number; c: number; pat: number }
+  const CLASSES: Cls[] = []
+  {
+    const rankList: number[] = [0]
+    for (let r = 2; r <= 14; r++) rankList.push(r)
+    for (let i = 0; i < rankList.length; i++)
+      for (let j = i; j < rankList.length; j++)
+        for (let k = j; k < rankList.length; k++) {
+          const a = rankList[i]
+          const b = rankList[j]
+          const c = rankList[k]
+          if (a === 0 && c === 0) continue // ジョーカー3枚は存在しない
+          const pat = a === b && b === c ? 0 : a === b ? 1 : b === c ? 2 : 3
+          CLASSES.push({ a, b, c, pat })
+        }
+  }
+  // g テーブル: クラス位置 → そのドロークラスでの最終最適応答（f から前計算、山非依存）
+  type GTab = { score: Float64Array; roys: Float64Array; flv: Float64Array; fl: Int8Array }
+  const fCache = new Map<string, GTab>()
+
+  const buildG = (ftab: FEntry[]): GTab => {
+    const nCls = CLASSES.length
+    const g: GTab = {
+      score: new Float64Array(nCls),
+      roys: new Float64Array(nCls),
+      flv: new Float64Array(nCls),
+      fl: new Int8Array(nCls),
+    }
+    for (let ci = 0; ci < nCls; ci++) {
+      const { a, b, c } = CLASSES[ci]
+      const e0 = ftab[a * 15 + b]
+      const e1 = ftab[a * 15 + c]
+      const e2 = ftab[b * 15 + c]
+      let best: FEntry = e0
+      if (e1 && (!best || e1.score > best.score)) best = e1
+      if (e2 && (!best || e2.score > best.score)) best = e2
+      if (!best) {
+        g.score[ci] = Number.NEGATIVE_INFINITY
+      } else {
+        g.score[ci] = best.score
+        g.roys[ci] = best.roys
+        g.fl[ci] = best.fl
+        g.flv[ci] = best.fl > 0 ? (flValues[best.fl] ?? 0) : 0
+      }
+    }
+    return g
+  }
 
   const rowKeyOf = (cards: readonly Card[]): string =>
     cards
@@ -2219,34 +2265,50 @@ export function evaluateBoardEndgameNeed4(
     flCounts: Record<number, number>
   }
 
-  /** V4: f テーブル × 最終ドロークラスの超幾何重みで期待値を閉じる。 */
-  const v4 = (ftab: FEntry[], cnt11: readonly number[]): ChildValue => {
+  /** V4: g テーブル × 最終ドロークラスの超幾何重みで期待値を閉じる。 */
+  const v4 = (g: GTab, cnt11: readonly number[]): ChildValue => {
     let n = 0
     let scoreSum = 0
     let roySum = 0
     let flvSum = 0
     let foulSum = 0
-    const flCounts: Record<number, number> = {}
-    forEachDrawClass3(cnt11, (a, b, c, w) => {
+    const flCountArr = [0, 0, 0, 0] // 14..17
+    const nCls = CLASSES.length
+    for (let ci = 0; ci < nCls; ci++) {
+      const cls = CLASSES[ci]
+      const ca = cnt11[cls.a]
+      if (ca === 0) continue
+      let w: number
+      if (cls.pat === 0) {
+        if (ca < 3) continue
+        w = (ca * (ca - 1) * (ca - 2)) / 6
+      } else if (cls.pat === 1) {
+        const cc = cnt11[cls.c]
+        if (ca < 2 || cc === 0) continue
+        w = ((ca * (ca - 1)) / 2) * cc
+      } else if (cls.pat === 2) {
+        const cb = cnt11[cls.b]
+        if (cb < 2) continue
+        w = ca * ((cb * (cb - 1)) / 2)
+      } else {
+        const cb = cnt11[cls.b]
+        const cc = cnt11[cls.c]
+        if (cb === 0 || cc === 0) continue
+        w = ca * cb * cc
+      }
       n += w
-      const e0 = ftab[a * 15 + b]
-      const e1 = ftab[a * 15 + c]
-      const e2 = ftab[b * 15 + c]
-      let best: FEntry = e0
-      if (e1 && (!best || e1.score > best.score)) best = e1
-      if (e2 && (!best || e2.score > best.score)) best = e2
-      if (!best) {
+      const s = g.score[ci]
+      if (s === Number.NEGATIVE_INFINITY) {
         foulSum += w
         scoreSum += -foulWeight * w
       } else {
-        roySum += best.roys * w
-        scoreSum += best.score * w
-        if (best.fl > 0) {
-          flvSum += (flValues[best.fl] ?? 0) * w
-          flCounts[best.fl] = (flCounts[best.fl] ?? 0) + w
-        }
+        scoreSum += s * w
+        roySum += g.roys[ci] * w
+        flvSum += g.flv[ci] * w
+        const fl = g.fl[ci]
+        if (fl > 0) flCountArr[fl - 14] += w
       }
-    })
+    }
     const out: ChildValue = {
       score: scoreSum / n,
       roys: roySum / n,
@@ -2254,7 +2316,9 @@ export function evaluateBoardEndgameNeed4(
       foulP: foulSum / n,
       flCounts: {},
     }
-    for (const [k, v] of Object.entries(flCounts)) out.flCounts[Number(k)] = v / n
+    for (let fl = 14; fl <= 17; fl++) {
+      if (flCountArr[fl - 14] > 0) out.flCounts[fl] = flCountArr[fl - 14] / n
+    }
     return out
   }
 
@@ -2299,12 +2363,12 @@ export function evaluateBoardEndgameNeed4(
           const key = `${rowKeyOf(b11.top)}|${rowKeyOf(b11.middle)}|${rowKeyOf(b11.bottom)}`
           if (seenChild.has(key)) continue
           seenChild.add(key)
-          let ftab = fCache.get(key)
-          if (!ftab) {
-            ftab = buildFTable(b11)
-            fCache.set(key, ftab)
+          let gtab = fCache.get(key)
+          if (!gtab) {
+            gtab = buildG(buildFTable(b11))
+            fCache.set(key, gtab)
           }
-          const v = v4(ftab, cnt11)
+          const v = v4(gtab, cnt11)
           if (!best || v.score > best.score) best = v
         }
       }
