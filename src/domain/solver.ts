@@ -2071,7 +2071,11 @@ export function createNeed4Evaluator(
   variant: Variant,
   options: RankOptions = {},
   caps: { skeletons?: number; gTables?: number } = {},
-): { score(board: Board, dead: readonly Card[]): number; stats(): { skeletons: number; gTables: number } } {
+): {
+  score(board: Board, dead: readonly Card[]): number
+  metric(board: Board, dead: readonly Card[]): BoardMetric
+  stats(): { skeletons: number; gTables: number }
+} {
   const jokers = options.jokers ?? false
   const foulWeight = options.foulWeight ?? DEFAULT_FOUL_WEIGHT
   const flValues =
@@ -2150,7 +2154,8 @@ export function createNeed4Evaluator(
   const cnt9 = new Array<number>(15).fill(0)
   const cnt11 = new Array<number>(15).fill(0)
 
-  const score = (board: Board, dead: readonly Card[]): number => {
+  /** 共通部: スケルトン取得と cnt9 構築。 */
+  const prepare = (board: Board, dead: readonly Card[]): Skeleton => {
     const seen = [...board.top, ...board.middle, ...board.bottom, ...dead]
     const deck = remainingDeck(seen, jokers)
     cnt9.fill(0)
@@ -2159,13 +2164,99 @@ export function createNeed4Evaluator(
     let sk = skCache.get(key9)
     if (!sk) {
       if (skCache.size >= skCap || gCache.size >= gCap) {
-        // スケルトンと g テーブルは相互参照なので、世代交代はまとめて行う（OOM防止の上限）
         skCache.clear()
         gCache.clear()
       }
       sk = buildSkeleton(board)
       skCache.set(key9, sk)
     }
+    return sk
+  }
+
+  /**
+   * スコアに加えて成分（期待ロイヤリティ・FL内訳・ファウル率）も厳密集計する。
+   * evaluateBoardEndgameNeed4 と同一値（フェーズCの最適方策メトリクス用）。
+   */
+  const metric = (board: Board, dead: readonly Card[]): BoardMetric => {
+    const sk = prepare(board, dead)
+    let tot = 0
+    let scoreSum = 0
+    let scoreSum2 = 0
+    let roySum = 0
+    let flvSum = 0
+    let foulSum = 0
+    const flBreak = [0, 0, 0, 0]
+    for (let ci = 0; ci < nCls; ci++) {
+      const cands = sk[ci]
+      if (cands.length === 0) continue
+      const cls = CLASSES[ci]
+      const wD = classWeight(cls, cnt9)
+      if (wD === 0) continue
+      for (let r = 0; r < 15; r++) cnt11[r] = cnt9[r]
+      cnt11[cls.a]--
+      cnt11[cls.b]--
+      cnt11[cls.c]--
+      const nW = fillWeights(cnt11, wcls)
+      let bestG: GTab | null = null
+      let bestS = Number.NEGATIVE_INFINITY
+      for (const g of cands) {
+        let s = 0
+        const arr = g.scoreEff
+        for (let k = 0; k < nCls; k++) s += wcls[k] * arr[k]
+        if (s > bestS) {
+          bestS = s
+          bestG = g
+        }
+      }
+      const g = bestG!
+      // 選ばれた子の成分を wcls で集計
+      let rs = 0
+      let fs = 0
+      let fo = 0
+      const fb = [0, 0, 0, 0]
+      for (let k = 0; k < nCls; k++) {
+        const w = wcls[k]
+        if (w === 0) continue
+        if (g.foul[k]) {
+          fo += w
+          continue
+        }
+        rs += w * g.roys[k]
+        fs += w * g.flv[k]
+        const fl = g.fl[k]
+        if (fl > 0) fb[fl - 14] += w
+      }
+      const sc = bestS / nW
+      tot += wD
+      scoreSum += sc * wD
+      scoreSum2 += sc * sc * wD
+      roySum += (rs / nW) * wD
+      flvSum += (fs / nW) * wD
+      foulSum += (fo / nW) * wD
+      for (let i = 0; i < 4; i++) flBreak[i] += (fb[i] / nW) * wD
+    }
+    const flBreakdown: Record<number, number> = {}
+    let flProb = 0
+    for (let i = 0; i < 4; i++) {
+      if (flBreak[i] > 0) {
+        flBreakdown[14 + i] = flBreak[i] / tot
+        flProb += flBreak[i] / tot
+      }
+    }
+    const mean = scoreSum / tot
+    return {
+      expRoyalty: roySum / tot,
+      flProb,
+      flEV: flvSum / tot,
+      foulProb: foulSum / tot,
+      flBreakdown,
+      score: mean,
+      scoreVar: Math.max(0, scoreSum2 / tot - mean * mean),
+    }
+  }
+
+  const score = (board: Board, dead: readonly Card[]): number => {
+    const sk = prepare(board, dead)
     let acc = 0
     let tot = 0
     for (let ci = 0; ci < nCls; ci++) {
@@ -2192,7 +2283,7 @@ export function createNeed4Evaluator(
     return acc / tot
   }
 
-  return { score, stats: () => ({ skeletons: skCache.size, gTables: gCache.size }) }
+  return { score, metric, stats: () => ({ skeletons: skCache.size, gTables: gCache.size }) }
 }
 
 /** ランク度数ベクトル（0=ジョーカー, 2..14）から3枚ドローの多重集合クラスを列挙する。 */

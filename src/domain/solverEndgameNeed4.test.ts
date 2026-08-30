@@ -117,6 +117,25 @@ describe('endgame need=4 two-step exact (M2)', () => {
     }
   })
 
+  it('スケルトン付きエバリュエータの metric が evaluateBoardEndgameNeed4 と厳密一致する', () => {
+    const rng = mulberry32(0x5ce2)
+    const ev = createNeed4Evaluator(ULTIMATE, { jokers: true })
+    for (let t = 0; t < 8; t++) {
+      const { board, deckRest } = randomCellNeed4(rng)
+      const dead = deckRest.slice(0, 4)
+      const ref = evaluateBoardEndgameNeed4(board, dead, ULTIMATE, { jokers: true })
+      const m = ev.metric(board, dead)
+      expect(m.score).toBeCloseTo(ref.score, 9)
+      expect(m.expRoyalty).toBeCloseTo(ref.expRoyalty, 9)
+      expect(m.flProb).toBeCloseTo(ref.flProb, 9)
+      expect(m.flEV).toBeCloseTo(ref.flEV, 9)
+      expect(m.foulProb).toBeCloseTo(ref.foulProb, 9)
+      for (const k of [14, 15, 16, 17]) {
+        expect(m.flBreakdown[k] ?? 0).toBeCloseTo(ref.flBreakdown[k] ?? 0, 9)
+      }
+    }
+  })
+
   it('フルデッキ（40枚）の計算時間を計測する', () => {
     const rng = mulberry32(0x4e46)
     const { board } = randomCellNeed4(rng)
