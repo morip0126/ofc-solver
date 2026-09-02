@@ -976,13 +976,19 @@ export interface RankOptions {
    */
   aggressiveTopCommit?: boolean
   /**
+   * 'oneshot' モデルの一括配布枚数（小数部は混合比: 8.3 → 8枚70% / 9枚30%）。
+   * 逐次プレーとの等価枚数はセル完全解に対する較正で決める（cellOneShot.test.ts）。
+   * 既定は ONESHOT_N_DEFAULT。
+   */
+  oneshotN?: number
+  /**
    * 終盤厳密（need=2）でランク空間高速パスを無効化してカード空間の全列挙を強制する
    * （クロスチェックテスト用。通常は rankEndgameApplicable な盤面で自動的に高速パスを使う）。
    */
   endgameCardSpace?: boolean
 }
 
-export type FutureModel = 'combined' | 'policy' | 'rollout' | 'hindsight' | 'streets' | 'exact'
+export type FutureModel = 'combined' | 'policy' | 'rollout' | 'oneshot' | 'hindsight' | 'streets' | 'exact'
 
 /**
  * 部分盤面の価値を、楽観的補完（残りは最適に置ける前提）のモンテカルロで推定する。
@@ -1002,6 +1008,7 @@ export function evaluateBoard(
     jokers = false,
     futureModel = 'combined',
     aggressiveTopCommit = false,
+    oneshotN = ONESHOT_N_DEFAULT,
   } = options
   const foulWeight =
     options.foulWeight ??
@@ -1427,7 +1434,14 @@ export function evaluateBoard(
       }
       continue
     }
-    if (futureModel === 'rollout' && need >= 2 && deck.length >= need + Math.floor(need / 2)) {
+    if (futureModel === 'oneshot' && deck.length >= need) {
+      // one-shot サロゲート: N*枚（小数部は反復ごとに混合）を一気に見て一括最適配置。
+      // 逐次プレーの価値と等価になる N* はセル完全解で較正（cellOneShot.test.ts）。
+      const base = Math.floor(oneshotN)
+      const frac = oneshotN - base
+      const nDeal = Math.min(deck.length, Math.max(need, base + (frac > 0 && rng() < frac ? 1 : 0)))
+      best = bestCompletionChoose(board, deck.slice(0, nDeal), variant, flValues)
+    } else if (futureModel === 'rollout' && need >= 2 && deck.length >= need + Math.floor(need / 2)) {
       best = rolloutBest()
     } else if (futureModel === 'policy' && streets > 0 && deck.length >= seen) {
       best = policyCommitBest()
@@ -1571,14 +1585,15 @@ export interface SuggestOptions extends RankOptions {
   /** 進捗コールバック（0..1）。Worker からの進捗通知用。 */
   onProgress?: (done: number, total: number) => void
   /**
-   * 第3ストリート候補（残り2マス）を「次の3枚ドロー全列挙 × 最終ストリート厳密応答」の
-   * 期待値で採点する（MCノイズなし・重い）。最終ストリート候補（13枚完成）の決定論的
-   * 厳密評価は常時オン（純粋な上位互換・高速のため、このフラグに依らない）。
+   * 第4ストリート候補（残り2マス）を「第5Stドロー全列挙 × 厳密応答」の期待値で採点する
+   * （MCノイズなし）。第5ストリート候補（13枚完成）の決定論的厳密評価は常時オン
+   * （純粋な上位互換・高速のため、このフラグに依らない）。
    */
   endgameExact?: boolean
   /**
-   * 第2ストリート候補（残り4マス）も evaluateBoardEndgameNeed4 の厳密期待値で採点する
-   * （M2。rankEndgameApplicable な盤面のみ、それ以外は従来評価にフォールバック）。
+   * 第3ストリート候補（残り4マス）も2段厳密期待値で採点する（フラッシュ不能盤面は
+   * 共有スケルトンエバリュエータ、それ以外は evaluateBoardEndgameNeed4 経由で
+   * カード空間/従来評価へフォールバック）。
    */
   endgameNeed4?: boolean
 }
@@ -1596,8 +1611,8 @@ export function suggestInitial5(
   const { iters = 120, refineTopK = 10, onProgress, ...rest } = options
   const boards = generateInitialBoards(cards)
 
-  if (rest.futureModel === 'rollout') {
-    // 解析: 粗選別なしで全候補を rollout 直当て（粗選別モデルの後知恵バイアスで
+  if (rest.futureModel === 'rollout' || rest.futureModel === 'oneshot') {
+    // 解析: 粗選別なしで全候補を直当て（粗選別モデルの後知恵バイアスで
     // 真の上位が精評価前に落ちるのを防ぐ。ユーザー合意の設計、2026-08）。
     const all = boards.map((board, i) => {
       onProgress?.(i, boards.length)
@@ -1644,8 +1659,10 @@ export interface ChunkOptions extends RankOptions {
   /** 候補ごとの決定論的 PRNG のベースシード。省略時は rng（または Math.random）を共有。 */
   seed?: number
   onProgress?: (done: number, total: number) => void
-  /** 第3ストリート候補（残り2マス）の全列挙厳密評価（SuggestOptions.endgameExact と同義）。 */
+  /** 第4ストリート候補（残り2マス）の全列挙厳密評価（SuggestOptions.endgameExact と同義）。 */
   endgameExact?: boolean
+  /** 第3ストリート候補（残り4マス）の2段厳密評価（SuggestOptions.endgameNeed4 と同義）。 */
+  endgameNeed4?: boolean
 }
 
 /**
@@ -1686,7 +1703,7 @@ export function evaluateStreetChunk(
   indices: readonly number[],
   options: ChunkOptions = {},
 ): CandidateMetric[] {
-  const { seed, onProgress, endgameExact, ...rest } = options
+  const { seed, onProgress, endgameExact, endgameNeed4, ...rest } = options
   const candidates = generateStreetBoards(current, drawn)
   const out = indices.map((index, i) => {
     onProgress?.(i, indices.length)
@@ -1696,6 +1713,12 @@ export function evaluateStreetChunk(
     const need = cap.top + cap.middle + cap.bottom
     if (need === 0 || (endgameExact && need <= 2)) {
       return { index, ...evaluateBoardEndgame(board, [...dead, discarded], variant, rest) }
+    }
+    if (endgameNeed4 && need === 4) {
+      const m = rankEndgameApplicable(board)
+        ? getSharedNeed4Evaluator(variant, rest).metric(board, [...dead, discarded])
+        : evaluateBoardEndgameNeed4(board, [...dead, discarded], variant, rest)
+      return { index, ...m }
     }
     const rng = seed !== undefined ? candidateRng(seed, index) : rest.rng
     return { index, ...evaluateBoard(board, [...dead, discarded], variant, { ...rest, rng }) }
@@ -2057,6 +2080,29 @@ function endgameNeed2Rank(
     score: expRoyalty + flEV - foulWeight * foulProb,
     scoreVar: Math.max(0, scoreSum2 / n - mean * mean),
   }
+}
+
+/**
+ * 'oneshot' の既定配布枚数。セル完全解 V1=15.1413 に対する較正値
+ * （cellOneShot.test.ts、2026-09）。逐次プレー（12枚見て8枚置く）は
+ * 「約8.3枚を一気に見て置く」のと等価。
+ */
+export const ONESHOT_N_DEFAULT = 8.28
+
+// 第3ストリート厳密評価の共有エバリュエータ（ワーカー内でセッションを跨いで温まる）。
+// variant/flValues/foulWeight の組ごとに1つ保持する。
+const sharedNeed4 = new Map<string, ReturnType<typeof createNeed4Evaluator>>()
+function getSharedNeed4Evaluator(
+  variant: Variant,
+  options: RankOptions,
+): ReturnType<typeof createNeed4Evaluator> {
+  const key = `${variant.id}|${options.jokers ? 1 : 0}|${options.foulWeight ?? ''}|${options.flValues ? JSON.stringify(options.flValues) : ''}`
+  let ev = sharedNeed4.get(key)
+  if (!ev) {
+    ev = createNeed4Evaluator(variant, options, { skeletons: 8000, gTables: 60000 })
+    sharedNeed4.set(key, ev)
+  }
+  return ev
 }
 
 /**
@@ -2710,7 +2756,9 @@ export function suggestStreet(
       ...(useExact
         ? evaluateBoardEndgame(board, [...dead, discarded], variant, rest)
         : endgameNeed4 && need === 4
-          ? evaluateBoardEndgameNeed4(board, [...dead, discarded], variant, rest)
+          ? rankEndgameApplicable(board)
+            ? getSharedNeed4Evaluator(variant, rest).metric(board, [...dead, discarded])
+            : evaluateBoardEndgameNeed4(board, [...dead, discarded], variant, rest)
           : evaluateBoard(board, [...dead, discarded], variant, rest)),
     }
   })

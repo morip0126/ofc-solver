@@ -28,7 +28,7 @@ const messages = {
   precisionStandard: { ja: '標準', en: 'Standard' },
   precisionHigh: { ja: '高精度', en: 'High' },
   precisionUltra: { ja: '最高', en: 'Ultra' },
-  precisionDeep: { ja: '解析（低速）', en: 'Deep (slow)' },
+  precisionDeep: { ja: '解析（厳密・数分）', en: 'Deep (exact, minutes)' },
   confirmReset: {
     ja: '盤面をすべてリセットします。よろしいですか？',
     en: 'Reset the entire board?',

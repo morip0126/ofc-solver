@@ -261,6 +261,8 @@ export interface SuggestInitialParams {
   rolloutInner?: number
   /** rollout の末端見積もりモデル（解析は 'policy'）。 */
   rolloutLeaf?: 'streets' | 'policy'
+  /** 'oneshot' の一括配布枚数（小数部は混合比。既定は較正値 ONESHOT_N_DEFAULT）。 */
+  oneshotN?: number
 }
 
 /**
@@ -273,7 +275,7 @@ export function suggestInitialParallel(
   params: SuggestInitialParams,
   onProgress?: (frac: number) => void,
 ): PoolTask<SuggestionDTO[]> {
-  const { cards, dead, variantId, jokers, iters, futureModel, rolloutInner, rolloutLeaf } = params
+  const { cards, dead, variantId, jokers, iters, futureModel, rolloutInner, rolloutLeaf, oneshotN } = params
   const boards = generateInitialBoards(cards)
   const cardCodes = cards.map(cardToString)
   const deadCodes = dead.map(cardToString)
@@ -298,11 +300,27 @@ export function suggestInitialParallel(
     iters: chunkIters,
     seed: chunkSeed,
     futureModel: model,
+    oneshotN,
     rolloutInner,
     rolloutLeaf,
   })
 
   const run = async (): Promise<SuggestionDTO[]> => {
+    if (futureModel === 'oneshot') {
+      // 解析（oneshot）: 粗選別なしで全候補を一括配布サロゲートで直当て。
+      // 候補ごと独立シードの決定論的 PRNG なので分割不変。
+      const specs = splitIndices(boards.length, solverPool.size).map((indices) => ({
+        units: indices.length,
+        req: chunkReq(indices, iters, seed, futureModel),
+      }))
+      const task = runChunks(specs, (d, t) => onProgress?.(t > 0 ? d / t : 0))
+      inner = task
+      const metrics = chunkResults(await task.promise)
+      if (canceled) throw new CanceledError()
+      metrics.sort((a, b) => b.score - a.score)
+      onProgress?.(1)
+      return metrics.slice(0, TOP_N).map((m) => toSuggestionDTO(boards[m.index], undefined, m))
+    }
     if (futureModel === 'rollout') {
       // 解析: 全候補を rollout のレーシング（逐次淘汰）で採点。同じ物差しで全候補を
       // 少しずつ測り、統計的に見込みのない候補を早期脱落させて生き残りに本数を集中する。
@@ -384,8 +402,10 @@ export interface SuggestStreetParams {
   futureModel?: FutureModel
   rolloutInner?: number
   rolloutLeaf?: 'streets' | 'policy'
-  /** 第3ストリート候補の全列挙厳密評価（解析精度）。最終ストリートの厳密化は常時オン。 */
+  /** 第4ストリート候補の全列挙厳密評価（解析精度）。第5ストリートの厳密化は常時オン。 */
   endgameExact?: boolean
+  /** 第3ストリート候補の2段厳密評価（解析精度）。 */
+  endgameNeed4?: boolean
 }
 
 /** ストリート手の推奨（候補をプール全体へ分割評価）。 */
@@ -393,7 +413,7 @@ export function suggestStreetParallel(
   params: SuggestStreetParams,
   onProgress?: (frac: number) => void,
 ): PoolTask<SuggestionDTO[]> {
-  const { board, drawn, dead, variantId, jokers, iters, futureModel, rolloutInner, rolloutLeaf, endgameExact } = params
+  const { board, drawn, dead, variantId, jokers, iters, futureModel, rolloutInner, rolloutLeaf, endgameExact, endgameNeed4 } = params
   const candidates = generateStreetBoards(board, drawn)
   const dto = boardDTO(board)
   const drawnCodes = drawn.map(cardToString)
@@ -428,6 +448,7 @@ export function suggestStreetParallel(
       rolloutInner,
       rolloutLeaf,
       endgameExact,
+      endgameNeed4,
     } satisfies WorkerRequest,
   }))
   const inner = runChunks(specs, (d, t) => onProgress?.(t > 0 ? d / t : 0))
