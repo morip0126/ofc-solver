@@ -1,0 +1,5027 @@
+{
+ "v1": 15.141347036908384,
+ "table": [
+  {
+   "drawn": "247",
+   "prob": 64,
+   "top": "",
+   "middle": "",
+   "bottom": "47",
+   "discard": "2",
+   "v2": 21.078322
+  },
+  {
+   "drawn": "248",
+   "prob": 64,
+   "top": "",
+   "middle": "",
+   "bottom": "24",
+   "discard": "8",
+   "v2": 21.065662
+  },
+  {
+   "drawn": "249",
+   "prob": 64,
+   "top": "",
+   "middle": "",
+   "bottom": "24",
+   "discard": "9",
+   "v2": 21.032067
+  },
+  {
+   "drawn": "24T",
+   "prob": 64,
+   "top": "",
+   "middle": "",
+   "bottom": "24",
+   "discard": "T",
+   "v2": 20.983662
+  },
+  {
+   "drawn": "24J",
+   "prob": 64,
+   "top": "",
+   "middle": "",
+   "bottom": "24",
+   "discard": "J",
+   "v2": 20.917441
+  },
+  {
+   "drawn": "24Q",
+   "prob": 64,
+   "top": "",
+   "middle": "",
+   "bottom": "24",
+   "discard": "Q",
+   "v2": 20.454689
+  },
+  {
+   "drawn": "24A",
+   "prob": 64,
+   "top": "A",
+   "middle": "",
+   "bottom": "4",
+   "discard": "2",
+   "v2": 22.453234
+  },
+  {
+   "drawn": "278",
+   "prob": 64,
+   "top": "",
+   "middle": "2",
+   "bottom": "7",
+   "discard": "8",
+   "v2": 9.393728
+  },
+  {
+   "drawn": "279",
+   "prob": 64,
+   "top": "",
+   "middle": "2",
+   "bottom": "7",
+   "discard": "9",
+   "v2": 9.374637
+  },
+  {
+   "drawn": "27T",
+   "prob": 64,
+   "top": "T",
+   "middle": "",
+   "bottom": "7",
+   "discard": "2",
+   "v2": 9.371475
+  },
+  {
+   "drawn": "27J",
+   "prob": 64,
+   "top": "J",
+   "middle": "",
+   "bottom": "7",
+   "discard": "2",
+   "v2": 9.633833
+  },
+  {
+   "drawn": "27Q",
+   "prob": 64,
+   "top": "Q",
+   "middle": "",
+   "bottom": "7",
+   "discard": "2",
+   "v2": 11.76478
+  },
+  {
+   "drawn": "27A",
+   "prob": 64,
+   "top": "A",
+   "middle": "",
+   "bottom": "7",
+   "discard": "2",
+   "v2": 16.004413
+  },
+  {
+   "drawn": "289",
+   "prob": 64,
+   "top": "",
+   "middle": "8",
+   "bottom": "2",
+   "discard": "9",
+   "v2": 9.354281
+  },
+  {
+   "drawn": "28T",
+   "prob": 64,
+   "top": "T",
+   "middle": "",
+   "bottom": "2",
+   "discard": "8",
+   "v2": 9.370044
+  },
+  {
+   "drawn": "28J",
+   "prob": 64,
+   "top": "J",
+   "middle": "",
+   "bottom": "2",
+   "discard": "8",
+   "v2": 9.631973
+  },
+  {
+   "drawn": "28Q",
+   "prob": 64,
+   "top": "Q",
+   "middle": "",
+   "bottom": "2",
+   "discard": "8",
+   "v2": 11.762824
+  },
+  {
+   "drawn": "28A",
+   "prob": 64,
+   "top": "A",
+   "middle": "",
+   "bottom": "2",
+   "discard": "8",
+   "v2": 16.004232
+  },
+  {
+   "drawn": "29T",
+   "prob": 64,
+   "top": "T",
+   "middle": "",
+   "bottom": "2",
+   "discard": "9",
+   "v2": 9.367976
+  },
+  {
+   "drawn": "29J",
+   "prob": 64,
+   "top": "J",
+   "middle": "",
+   "bottom": "2",
+   "discard": "9",
+   "v2": 9.629845
+  },
+  {
+   "drawn": "29Q",
+   "prob": 64,
+   "top": "Q",
+   "middle": "",
+   "bottom": "2",
+   "discard": "9",
+   "v2": 11.75997
+  },
+  {
+   "drawn": "29A",
+   "prob": 64,
+   "top": "A",
+   "middle": "",
+   "bottom": "2",
+   "discard": "9",
+   "v2": 16.002278
+  },
+  {
+   "drawn": "2TJ",
+   "prob": 64,
+   "top": "J",
+   "middle": "",
+   "bottom": "2",
+   "discard": "T",
+   "v2": 9.626919
+  },
+  {
+   "drawn": "2TQ",
+   "prob": 64,
+   "top": "Q",
+   "middle": "",
+   "bottom": "2",
+   "discard": "T",
+   "v2": 11.756112
+  },
+  {
+   "drawn": "2TA",
+   "prob": 64,
+   "top": "A",
+   "middle": "",
+   "bottom": "2",
+   "discard": "T",
+   "v2": 15.997234
+  },
+  {
+   "drawn": "2JQ",
+   "prob": 64,
+   "top": "Q",
+   "middle": "",
+   "bottom": "2",
+   "discard": "J",
+   "v2": 11.75123
+  },
+  {
+   "drawn": "2JA",
+   "prob": 64,
+   "top": "A",
+   "middle": "",
+   "bottom": "2",
+   "discard": "J",
+   "v2": 15.991354
+  },
+  {
+   "drawn": "2QA",
+   "prob": 64,
+   "top": "A",
+   "middle": "",
+   "bottom": "2",
+   "discard": "Q",
+   "v2": 15.915127
+  },
+  {
+   "drawn": "478",
+   "prob": 64,
+   "top": "",
+   "middle": "",
+   "bottom": "47",
+   "discard": "8",
+   "v2": 21.020059
+  },
+  {
+   "drawn": "479",
+   "prob": 64,
+   "top": "",
+   "middle": "",
+   "bottom": "47",
+   "discard": "9",
+   "v2": 20.985994
+  },
+  {
+   "drawn": "47T",
+   "prob": 64,
+   "top": "",
+   "middle": "",
+   "bottom": "47",
+   "discard": "T",
+   "v2": 20.937736
+  },
+  {
+   "drawn": "47J",
+   "prob": 64,
+   "top": "",
+   "middle": "",
+   "bottom": "47",
+   "discard": "J",
+   "v2": 20.872423
+  },
+  {
+   "drawn": "47Q",
+   "prob": 64,
+   "top": "",
+   "middle": "",
+   "bottom": "47",
+   "discard": "Q",
+   "v2": 20.414136
+  },
+  {
+   "drawn": "47A",
+   "prob": 64,
+   "top": "A",
+   "middle": "",
+   "bottom": "4",
+   "discard": "7",
+   "v2": 22.451654
+  },
+  {
+   "drawn": "489",
+   "prob": 64,
+   "top": "",
+   "middle": "8",
+   "bottom": "4",
+   "discard": "9",
+   "v2": 15.739243
+  },
+  {
+   "drawn": "48T",
+   "prob": 64,
+   "top": "T",
+   "middle": "",
+   "bottom": "4",
+   "discard": "8",
+   "v2": 15.926203
+  },
+  {
+   "drawn": "48J",
+   "prob": 64,
+   "top": "J",
+   "middle": "",
+   "bottom": "4",
+   "discard": "8",
+   "v2": 16.266087
+  },
+  {
+   "drawn": "48Q",
+   "prob": 64,
+   "top": "Q",
+   "middle": "",
+   "bottom": "4",
+   "discard": "8",
+   "v2": 18.92499
+  },
+  {
+   "drawn": "48A",
+   "prob": 64,
+   "top": "A",
+   "middle": "",
+   "bottom": "4",
+   "discard": "8",
+   "v2": 23.753023
+  },
+  {
+   "drawn": "49T",
+   "prob": 64,
+   "top": "T",
+   "middle": "",
+   "bottom": "4",
+   "discard": "9",
+   "v2": 15.924068
+  },
+  {
+   "drawn": "49J",
+   "prob": 64,
+   "top": "J",
+   "middle": "",
+   "bottom": "4",
+   "discard": "9",
+   "v2": 16.263833
+  },
+  {
+   "drawn": "49Q",
+   "prob": 64,
+   "top": "Q",
+   "middle": "",
+   "bottom": "4",
+   "discard": "9",
+   "v2": 18.922522
+  },
+  {
+   "drawn": "49A",
+   "prob": 64,
+   "top": "A",
+   "middle": "",
+   "bottom": "4",
+   "discard": "9",
+   "v2": 23.75327
+  },
+  {
+   "drawn": "4TJ",
+   "prob": 64,
+   "top": "J",
+   "middle": "",
+   "bottom": "4",
+   "discard": "T",
+   "v2": 16.2604
+  },
+  {
+   "drawn": "4TQ",
+   "prob": 64,
+   "top": "Q",
+   "middle": "",
+   "bottom": "4",
+   "discard": "T",
+   "v2": 18.918965
+  },
+  {
+   "drawn": "4TA",
+   "prob": 64,
+   "top": "A",
+   "middle": "",
+   "bottom": "4",
+   "discard": "T",
+   "v2": 23.749494
+  },
+  {
+   "drawn": "4JQ",
+   "prob": 64,
+   "top": "Q",
+   "middle": "",
+   "bottom": "4",
+   "discard": "J",
+   "v2": 18.914679
+  },
+  {
+   "drawn": "4JA",
+   "prob": 64,
+   "top": "A",
+   "middle": "",
+   "bottom": "4",
+   "discard": "J",
+   "v2": 23.745363
+  },
+  {
+   "drawn": "4QA",
+   "prob": 64,
+   "top": "A",
+   "middle": "",
+   "bottom": "4",
+   "discard": "Q",
+   "v2": 23.686665
+  },
+  {
+   "drawn": "789",
+   "prob": 64,
+   "top": "",
+   "middle": "8",
+   "bottom": "7",
+   "discard": "9",
+   "v2": 9.323183
+  },
+  {
+   "drawn": "78T",
+   "prob": 64,
+   "top": "T",
+   "middle": "",
+   "bottom": "7",
+   "discard": "8",
+   "v2": 9.368222
+  },
+  {
+   "drawn": "78J",
+   "prob": 64,
+   "top": "J",
+   "middle": "",
+   "bottom": "7",
+   "discard": "8",
+   "v2": 9.630253
+  },
+  {
+   "drawn": "78Q",
+   "prob": 64,
+   "top": "Q",
+   "middle": "",
+   "bottom": "7",
+   "discard": "8",
+   "v2": 11.760039
+  },
+  {
+   "drawn": "78A",
+   "prob": 64,
+   "top": "A",
+   "middle": "",
+   "bottom": "7",
+   "discard": "8",
+   "v2": 16.002432
+  },
+  {
+   "drawn": "79T",
+   "prob": 64,
+   "top": "T",
+   "middle": "",
+   "bottom": "7",
+   "discard": "9",
+   "v2": 9.36617
+  },
+  {
+   "drawn": "79J",
+   "prob": 64,
+   "top": "J",
+   "middle": "",
+   "bottom": "7",
+   "discard": "9",
+   "v2": 9.628141
+  },
+  {
+   "drawn": "79Q",
+   "prob": 64,
+   "top": "Q",
+   "middle": "",
+   "bottom": "7",
+   "discard": "9",
+   "v2": 11.757241
+  },
+  {
+   "drawn": "79A",
+   "prob": 64,
+   "top": "A",
+   "middle": "",
+   "bottom": "7",
+   "discard": "9",
+   "v2": 16.000708
+  },
+  {
+   "drawn": "7TJ",
+   "prob": 64,
+   "top": "J",
+   "middle": "",
+   "bottom": "7",
+   "discard": "T",
+   "v2": 9.625212
+  },
+  {
+   "drawn": "7TQ",
+   "prob": 64,
+   "top": "Q",
+   "middle": "",
+   "bottom": "7",
+   "discard": "T",
+   "v2": 11.753468
+  },
+  {
+   "drawn": "7TA",
+   "prob": 64,
+   "top": "A",
+   "middle": "",
+   "bottom": "7",
+   "discard": "T",
+   "v2": 15.9957
+  },
+  {
+   "drawn": "7JQ",
+   "prob": 64,
+   "top": "Q",
+   "middle": "",
+   "bottom": "7",
+   "discard": "J",
+   "v2": 11.748585
+  },
+  {
+   "drawn": "7JA",
+   "prob": 64,
+   "top": "A",
+   "middle": "",
+   "bottom": "7",
+   "discard": "J",
+   "v2": 15.989943
+  },
+  {
+   "drawn": "7QA",
+   "prob": 64,
+   "top": "A",
+   "middle": "",
+   "bottom": "7",
+   "discard": "Q",
+   "v2": 15.913664
+  },
+  {
+   "drawn": "89T",
+   "prob": 64,
+   "top": "T",
+   "middle": "9",
+   "bottom": "",
+   "discard": "8",
+   "v2": 7.101621
+  },
+  {
+   "drawn": "89J",
+   "prob": 64,
+   "top": "J",
+   "middle": "9",
+   "bottom": "",
+   "discard": "8",
+   "v2": 7.310444
+  },
+  {
+   "drawn": "89Q",
+   "prob": 64,
+   "top": "Q",
+   "middle": "8",
+   "bottom": "",
+   "discard": "9",
+   "v2": 9.458938
+  },
+  {
+   "drawn": "89A",
+   "prob": 64,
+   "top": "A",
+   "middle": "8",
+   "bottom": "",
+   "discard": "9",
+   "v2": 13.667709
+  },
+  {
+   "drawn": "8TJ",
+   "prob": 64,
+   "top": "J",
+   "middle": "T",
+   "bottom": "",
+   "discard": "8",
+   "v2": 7.306267
+  },
+  {
+   "drawn": "8TQ",
+   "prob": 64,
+   "top": "Q",
+   "middle": "8",
+   "bottom": "",
+   "discard": "T",
+   "v2": 9.453526
+  },
+  {
+   "drawn": "8TA",
+   "prob": 64,
+   "top": "A",
+   "middle": "8",
+   "bottom": "",
+   "discard": "T",
+   "v2": 13.662577
+  },
+  {
+   "drawn": "8JQ",
+   "prob": 64,
+   "top": "Q",
+   "middle": "8",
+   "bottom": "",
+   "discard": "J",
+   "v2": 9.445762
+  },
+  {
+   "drawn": "8JA",
+   "prob": 64,
+   "top": "A",
+   "middle": "8",
+   "bottom": "",
+   "discard": "J",
+   "v2": 13.655076
+  },
+  {
+   "drawn": "8QA",
+   "prob": 64,
+   "top": "A",
+   "middle": "8",
+   "bottom": "",
+   "discard": "Q",
+   "v2": 13.516594
+  },
+  {
+   "drawn": "9TJ",
+   "prob": 64,
+   "top": "J",
+   "middle": "T",
+   "bottom": "",
+   "discard": "9",
+   "v2": 7.302806
+  },
+  {
+   "drawn": "9TQ",
+   "prob": 64,
+   "top": "Q",
+   "middle": "9",
+   "bottom": "",
+   "discard": "T",
+   "v2": 9.449236
+  },
+  {
+   "drawn": "9TA",
+   "prob": 64,
+   "top": "A",
+   "middle": "9",
+   "bottom": "",
+   "discard": "T",
+   "v2": 13.655397
+  },
+  {
+   "drawn": "9JQ",
+   "prob": 64,
+   "top": "Q",
+   "middle": "9",
+   "bottom": "",
+   "discard": "J",
+   "v2": 9.44198
+  },
+  {
+   "drawn": "9JA",
+   "prob": 64,
+   "top": "A",
+   "middle": "9",
+   "bottom": "",
+   "discard": "J",
+   "v2": 13.648122
+  },
+  {
+   "drawn": "9QA",
+   "prob": 64,
+   "top": "A",
+   "middle": "9",
+   "bottom": "",
+   "discard": "Q",
+   "v2": 13.508479
+  },
+  {
+   "drawn": "TJQ",
+   "prob": 64,
+   "top": "Q",
+   "middle": "J",
+   "bottom": "",
+   "discard": "T",
+   "v2": 9.435373
+  },
+  {
+   "drawn": "TJA",
+   "prob": 64,
+   "top": "A",
+   "middle": "T",
+   "bottom": "",
+   "discard": "J",
+   "v2": 13.636416
+  },
+  {
+   "drawn": "TQA",
+   "prob": 64,
+   "top": "A",
+   "middle": "T",
+   "bottom": "",
+   "discard": "Q",
+   "v2": 13.496499
+  },
+  {
+   "drawn": "JQA",
+   "prob": 64,
+   "top": "A",
+   "middle": "J",
+   "bottom": "",
+   "discard": "Q",
+   "v2": 13.479845
+  },
+  {
+   "drawn": "234",
+   "prob": 48,
+   "top": "",
+   "middle": "",
+   "bottom": "24",
+   "discard": "3",
+   "v2": 21.283805
+  },
+  {
+   "drawn": "237",
+   "prob": 48,
+   "top": "",
+   "middle": "2",
+   "bottom": "7",
+   "discard": "3",
+   "v2": 9.492668
+  },
+  {
+   "drawn": "238",
+   "prob": 48,
+   "top": "",
+   "middle": "8",
+   "bottom": "2",
+   "discard": "3",
+   "v2": 9.47554
+  },
+  {
+   "drawn": "239",
+   "prob": 48,
+   "top": "",
+   "middle": "9",
+   "bottom": "2",
+   "discard": "3",
+   "v2": 9.452318
+  },
+  {
+   "drawn": "23T",
+   "prob": 48,
+   "top": "T",
+   "middle": "",
+   "bottom": "2",
+   "discard": "3",
+   "v2": 9.427159
+  },
+  {
+   "drawn": "23J",
+   "prob": 48,
+   "top": "J",
+   "middle": "",
+   "bottom": "2",
+   "discard": "3",
+   "v2": 9.688119
+  },
+  {
+   "drawn": "23Q",
+   "prob": 48,
+   "top": "Q",
+   "middle": "",
+   "bottom": "2",
+   "discard": "3",
+   "v2": 11.814048
+  },
+  {
+   "drawn": "23A",
+   "prob": 48,
+   "top": "A",
+   "middle": "",
+   "bottom": "2",
+   "discard": "3",
+   "v2": 16.18738
+  },
+  {
+   "drawn": "245",
+   "prob": 48,
+   "top": "",
+   "middle": "",
+   "bottom": "24",
+   "discard": "5",
+   "v2": 21.283533
+  },
+  {
+   "drawn": "246",
+   "prob": 48,
+   "top": "",
+   "middle": "",
+   "bottom": "24",
+   "discard": "6",
+   "v2": 21.28136
+  },
+  {
+   "drawn": "257",
+   "prob": 48,
+   "top": "",
+   "middle": "2",
+   "bottom": "7",
+   "discard": "5",
+   "v2": 9.492462
+  },
+  {
+   "drawn": "258",
+   "prob": 48,
+   "top": "",
+   "middle": "8",
+   "bottom": "2",
+   "discard": "5",
+   "v2": 9.475317
+  },
+  {
+   "drawn": "259",
+   "prob": 48,
+   "top": "",
+   "middle": "9",
+   "bottom": "2",
+   "discard": "5",
+   "v2": 9.452093
+  },
+  {
+   "drawn": "25T",
+   "prob": 48,
+   "top": "T",
+   "middle": "",
+   "bottom": "2",
+   "discard": "5",
+   "v2": 9.427159
+  },
+  {
+   "drawn": "25J",
+   "prob": 48,
+   "top": "J",
+   "middle": "",
+   "bottom": "2",
+   "discard": "5",
+   "v2": 9.688119
+  },
+  {
+   "drawn": "25Q",
+   "prob": 48,
+   "top": "Q",
+   "middle": "",
+   "bottom": "2",
+   "discard": "5",
+   "v2": 11.814048
+  },
+  {
+   "drawn": "25A",
+   "prob": 48,
+   "top": "A",
+   "middle": "",
+   "bottom": "2",
+   "discard": "5",
+   "v2": 16.18738
+  },
+  {
+   "drawn": "267",
+   "prob": 48,
+   "top": "",
+   "middle": "2",
+   "bottom": "7",
+   "discard": "6",
+   "v2": 9.490441
+  },
+  {
+   "drawn": "268",
+   "prob": 48,
+   "top": "",
+   "middle": "8",
+   "bottom": "2",
+   "discard": "6",
+   "v2": 9.472791
+  },
+  {
+   "drawn": "269",
+   "prob": 48,
+   "top": "",
+   "middle": "9",
+   "bottom": "2",
+   "discard": "6",
+   "v2": 9.449422
+  },
+  {
+   "drawn": "26T",
+   "prob": 48,
+   "top": "T",
+   "middle": "",
+   "bottom": "2",
+   "discard": "6",
+   "v2": 9.426665
+  },
+  {
+   "drawn": "26J",
+   "prob": 48,
+   "top": "J",
+   "middle": "",
+   "bottom": "2",
+   "discard": "6",
+   "v2": 9.687666
+  },
+  {
+   "drawn": "26Q",
+   "prob": 48,
+   "top": "Q",
+   "middle": "",
+   "bottom": "2",
+   "discard": "6",
+   "v2": 11.813156
+  },
+  {
+   "drawn": "26A",
+   "prob": 48,
+   "top": "A",
+   "middle": "",
+   "bottom": "2",
+   "discard": "6",
+   "v2": 16.185913
+  },
+  {
+   "drawn": "347",
+   "prob": 48,
+   "top": "",
+   "middle": "",
+   "bottom": "47",
+   "discard": "3",
+   "v2": 21.241865
+  },
+  {
+   "drawn": "348",
+   "prob": 48,
+   "top": "",
+   "middle": "8",
+   "bottom": "4",
+   "discard": "3",
+   "v2": 15.913051
+  },
+  {
+   "drawn": "349",
+   "prob": 48,
+   "top": "",
+   "middle": "9",
+   "bottom": "4",
+   "discard": "3",
+   "v2": 15.884835
+  },
+  {
+   "drawn": "34T",
+   "prob": 48,
+   "top": "T",
+   "middle": "",
+   "bottom": "4",
+   "discard": "3",
+   "v2": 16.008892
+  },
+  {
+   "drawn": "34J",
+   "prob": 48,
+   "top": "J",
+   "middle": "",
+   "bottom": "4",
+   "discard": "3",
+   "v2": 16.348622
+  },
+  {
+   "drawn": "34Q",
+   "prob": 48,
+   "top": "Q",
+   "middle": "",
+   "bottom": "4",
+   "discard": "3",
+   "v2": 19.000286
+  },
+  {
+   "drawn": "34A",
+   "prob": 48,
+   "top": "A",
+   "middle": "",
+   "bottom": "4",
+   "discard": "3",
+   "v2": 24.00153
+  },
+  {
+   "drawn": "378",
+   "prob": 48,
+   "top": "",
+   "middle": "8",
+   "bottom": "7",
+   "discard": "3",
+   "v2": 9.447455
+  },
+  {
+   "drawn": "379",
+   "prob": 48,
+   "top": "",
+   "middle": "9",
+   "bottom": "7",
+   "discard": "3",
+   "v2": 9.424294
+  },
+  {
+   "drawn": "37T",
+   "prob": 48,
+   "top": "T",
+   "middle": "",
+   "bottom": "7",
+   "discard": "3",
+   "v2": 9.425423
+  },
+  {
+   "drawn": "37J",
+   "prob": 48,
+   "top": "J",
+   "middle": "",
+   "bottom": "7",
+   "discard": "3",
+   "v2": 9.686504
+  },
+  {
+   "drawn": "37Q",
+   "prob": 48,
+   "top": "Q",
+   "middle": "",
+   "bottom": "7",
+   "discard": "3",
+   "v2": 11.811404
+  },
+  {
+   "drawn": "37A",
+   "prob": 48,
+   "top": "A",
+   "middle": "",
+   "bottom": "7",
+   "discard": "3",
+   "v2": 16.185906
+  },
+  {
+   "drawn": "389",
+   "prob": 48,
+   "top": "",
+   "middle": "9",
+   "bottom": "3",
+   "discard": "8",
+   "v2": 6.930898
+  },
+  {
+   "drawn": "38T",
+   "prob": 48,
+   "top": "",
+   "middle": "T",
+   "bottom": "3",
+   "discard": "8",
+   "v2": 6.933936
+  },
+  {
+   "drawn": "38J",
+   "prob": 48,
+   "top": "J",
+   "middle": "8",
+   "bottom": "",
+   "discard": "3",
+   "v2": 7.096004
+  },
+  {
+   "drawn": "38Q",
+   "prob": 48,
+   "top": "Q",
+   "middle": "8",
+   "bottom": "",
+   "discard": "3",
+   "v2": 9.159544
+  },
+  {
+   "drawn": "38A",
+   "prob": 48,
+   "top": "A",
+   "middle": "8",
+   "bottom": "",
+   "discard": "3",
+   "v2": 13.597189
+  },
+  {
+   "drawn": "39T",
+   "prob": 48,
+   "top": "",
+   "middle": "T",
+   "bottom": "3",
+   "discard": "9",
+   "v2": 6.91366
+  },
+  {
+   "drawn": "39J",
+   "prob": 48,
+   "top": "J",
+   "middle": "9",
+   "bottom": "",
+   "discard": "3",
+   "v2": 7.093517
+  },
+  {
+   "drawn": "39Q",
+   "prob": 48,
+   "top": "Q",
+   "middle": "9",
+   "bottom": "",
+   "discard": "3",
+   "v2": 9.156005
+  },
+  {
+   "drawn": "39A",
+   "prob": 48,
+   "top": "A",
+   "middle": "9",
+   "bottom": "",
+   "discard": "3",
+   "v2": 13.590964
+  },
+  {
+   "drawn": "3TJ",
+   "prob": 48,
+   "top": "J",
+   "middle": "T",
+   "bottom": "",
+   "discard": "3",
+   "v2": 7.089548
+  },
+  {
+   "drawn": "3TQ",
+   "prob": 48,
+   "top": "Q",
+   "middle": "T",
+   "bottom": "",
+   "discard": "3",
+   "v2": 9.149937
+  },
+  {
+   "drawn": "3TA",
+   "prob": 48,
+   "top": "A",
+   "middle": "T",
+   "bottom": "",
+   "discard": "3",
+   "v2": 13.580628
+  },
+  {
+   "drawn": "3JQ",
+   "prob": 48,
+   "top": "Q",
+   "middle": "J",
+   "bottom": "",
+   "discard": "3",
+   "v2": 9.142158
+  },
+  {
+   "drawn": "3JA",
+   "prob": 48,
+   "top": "A",
+   "middle": "J",
+   "bottom": "",
+   "discard": "3",
+   "v2": 13.565891
+  },
+  {
+   "drawn": "3QA",
+   "prob": 48,
+   "top": "A",
+   "middle": "Q",
+   "bottom": "",
+   "discard": "3",
+   "v2": 13.268061
+  },
+  {
+   "drawn": "457",
+   "prob": 48,
+   "top": "",
+   "middle": "",
+   "bottom": "47",
+   "discard": "5",
+   "v2": 21.241601
+  },
+  {
+   "drawn": "458",
+   "prob": 48,
+   "top": "",
+   "middle": "8",
+   "bottom": "4",
+   "discard": "5",
+   "v2": 15.912716
+  },
+  {
+   "drawn": "459",
+   "prob": 48,
+   "top": "",
+   "middle": "9",
+   "bottom": "4",
+   "discard": "5",
+   "v2": 15.88449
+  },
+  {
+   "drawn": "45T",
+   "prob": 48,
+   "top": "T",
+   "middle": "",
+   "bottom": "4",
+   "discard": "5",
+   "v2": 16.008892
+  },
+  {
+   "drawn": "45J",
+   "prob": 48,
+   "top": "J",
+   "middle": "",
+   "bottom": "4",
+   "discard": "5",
+   "v2": 16.348622
+  },
+  {
+   "drawn": "45Q",
+   "prob": 48,
+   "top": "Q",
+   "middle": "",
+   "bottom": "4",
+   "discard": "5",
+   "v2": 19.000286
+  },
+  {
+   "drawn": "45A",
+   "prob": 48,
+   "top": "A",
+   "middle": "",
+   "bottom": "4",
+   "discard": "5",
+   "v2": 24.00153
+  },
+  {
+   "drawn": "467",
+   "prob": 48,
+   "top": "",
+   "middle": "",
+   "bottom": "47",
+   "discard": "6",
+   "v2": 21.239612
+  },
+  {
+   "drawn": "468",
+   "prob": 48,
+   "top": "",
+   "middle": "8",
+   "bottom": "4",
+   "discard": "6",
+   "v2": 15.909513
+  },
+  {
+   "drawn": "469",
+   "prob": 48,
+   "top": "",
+   "middle": "9",
+   "bottom": "4",
+   "discard": "6",
+   "v2": 15.881121
+  },
+  {
+   "drawn": "46T",
+   "prob": 48,
+   "top": "T",
+   "middle": "",
+   "bottom": "4",
+   "discard": "6",
+   "v2": 16.008284
+  },
+  {
+   "drawn": "46J",
+   "prob": 48,
+   "top": "J",
+   "middle": "",
+   "bottom": "4",
+   "discard": "6",
+   "v2": 16.348061
+  },
+  {
+   "drawn": "46Q",
+   "prob": 48,
+   "top": "Q",
+   "middle": "",
+   "bottom": "4",
+   "discard": "6",
+   "v2": 18.999362
+  },
+  {
+   "drawn": "46A",
+   "prob": 48,
+   "top": "A",
+   "middle": "",
+   "bottom": "4",
+   "discard": "6",
+   "v2": 23.999962
+  },
+  {
+   "drawn": "578",
+   "prob": 48,
+   "top": "",
+   "middle": "8",
+   "bottom": "7",
+   "discard": "5",
+   "v2": 9.447253
+  },
+  {
+   "drawn": "579",
+   "prob": 48,
+   "top": "",
+   "middle": "9",
+   "bottom": "7",
+   "discard": "5",
+   "v2": 9.424098
+  },
+  {
+   "drawn": "57T",
+   "prob": 48,
+   "top": "T",
+   "middle": "",
+   "bottom": "7",
+   "discard": "5",
+   "v2": 9.425423
+  },
+  {
+   "drawn": "57J",
+   "prob": 48,
+   "top": "J",
+   "middle": "",
+   "bottom": "7",
+   "discard": "5",
+   "v2": 9.686504
+  },
+  {
+   "drawn": "57Q",
+   "prob": 48,
+   "top": "Q",
+   "middle": "",
+   "bottom": "7",
+   "discard": "5",
+   "v2": 11.811404
+  },
+  {
+   "drawn": "57A",
+   "prob": 48,
+   "top": "A",
+   "middle": "",
+   "bottom": "7",
+   "discard": "5",
+   "v2": 16.185906
+  },
+  {
+   "drawn": "589",
+   "prob": 48,
+   "top": "",
+   "middle": "9",
+   "bottom": "5",
+   "discard": "8",
+   "v2": 6.930898
+  },
+  {
+   "drawn": "58T",
+   "prob": 48,
+   "top": "",
+   "middle": "T",
+   "bottom": "5",
+   "discard": "8",
+   "v2": 6.933936
+  },
+  {
+   "drawn": "58J",
+   "prob": 48,
+   "top": "J",
+   "middle": "8",
+   "bottom": "",
+   "discard": "5",
+   "v2": 7.096004
+  },
+  {
+   "drawn": "58Q",
+   "prob": 48,
+   "top": "Q",
+   "middle": "8",
+   "bottom": "",
+   "discard": "5",
+   "v2": 9.159544
+  },
+  {
+   "drawn": "58A",
+   "prob": 48,
+   "top": "A",
+   "middle": "8",
+   "bottom": "",
+   "discard": "5",
+   "v2": 13.597189
+  },
+  {
+   "drawn": "59T",
+   "prob": 48,
+   "top": "",
+   "middle": "T",
+   "bottom": "5",
+   "discard": "9",
+   "v2": 6.91366
+  },
+  {
+   "drawn": "59J",
+   "prob": 48,
+   "top": "J",
+   "middle": "9",
+   "bottom": "",
+   "discard": "5",
+   "v2": 7.093517
+  },
+  {
+   "drawn": "59Q",
+   "prob": 48,
+   "top": "Q",
+   "middle": "9",
+   "bottom": "",
+   "discard": "5",
+   "v2": 9.156005
+  },
+  {
+   "drawn": "59A",
+   "prob": 48,
+   "top": "A",
+   "middle": "9",
+   "bottom": "",
+   "discard": "5",
+   "v2": 13.590964
+  },
+  {
+   "drawn": "5TJ",
+   "prob": 48,
+   "top": "J",
+   "middle": "T",
+   "bottom": "",
+   "discard": "5",
+   "v2": 7.089548
+  },
+  {
+   "drawn": "5TQ",
+   "prob": 48,
+   "top": "Q",
+   "middle": "T",
+   "bottom": "",
+   "discard": "5",
+   "v2": 9.149937
+  },
+  {
+   "drawn": "5TA",
+   "prob": 48,
+   "top": "A",
+   "middle": "T",
+   "bottom": "",
+   "discard": "5",
+   "v2": 13.580628
+  },
+  {
+   "drawn": "5JQ",
+   "prob": 48,
+   "top": "Q",
+   "middle": "J",
+   "bottom": "",
+   "discard": "5",
+   "v2": 9.142158
+  },
+  {
+   "drawn": "5JA",
+   "prob": 48,
+   "top": "A",
+   "middle": "J",
+   "bottom": "",
+   "discard": "5",
+   "v2": 13.565891
+  },
+  {
+   "drawn": "5QA",
+   "prob": 48,
+   "top": "A",
+   "middle": "Q",
+   "bottom": "",
+   "discard": "5",
+   "v2": 13.268061
+  },
+  {
+   "drawn": "678",
+   "prob": 48,
+   "top": "",
+   "middle": "8",
+   "bottom": "7",
+   "discard": "6",
+   "v2": 9.444789
+  },
+  {
+   "drawn": "679",
+   "prob": 48,
+   "top": "",
+   "middle": "9",
+   "bottom": "7",
+   "discard": "6",
+   "v2": 9.421646
+  },
+  {
+   "drawn": "67T",
+   "prob": 48,
+   "top": "T",
+   "middle": "",
+   "bottom": "7",
+   "discard": "6",
+   "v2": 9.424923
+  },
+  {
+   "drawn": "67J",
+   "prob": 48,
+   "top": "J",
+   "middle": "",
+   "bottom": "7",
+   "discard": "6",
+   "v2": 9.686046
+  },
+  {
+   "drawn": "67Q",
+   "prob": 48,
+   "top": "Q",
+   "middle": "",
+   "bottom": "7",
+   "discard": "6",
+   "v2": 11.81051
+  },
+  {
+   "drawn": "67A",
+   "prob": 48,
+   "top": "A",
+   "middle": "",
+   "bottom": "7",
+   "discard": "6",
+   "v2": 16.184611
+  },
+  {
+   "drawn": "689",
+   "prob": 48,
+   "top": "",
+   "middle": "9",
+   "bottom": "6",
+   "discard": "8",
+   "v2": 6.928879
+  },
+  {
+   "drawn": "68T",
+   "prob": 48,
+   "top": "",
+   "middle": "T",
+   "bottom": "6",
+   "discard": "8",
+   "v2": 6.932021
+  },
+  {
+   "drawn": "68J",
+   "prob": 48,
+   "top": "J",
+   "middle": "8",
+   "bottom": "",
+   "discard": "6",
+   "v2": 7.095516
+  },
+  {
+   "drawn": "68Q",
+   "prob": 48,
+   "top": "Q",
+   "middle": "8",
+   "bottom": "",
+   "discard": "6",
+   "v2": 9.158684
+  },
+  {
+   "drawn": "68A",
+   "prob": 48,
+   "top": "A",
+   "middle": "8",
+   "bottom": "",
+   "discard": "6",
+   "v2": 13.595901
+  },
+  {
+   "drawn": "69T",
+   "prob": 48,
+   "top": "",
+   "middle": "T",
+   "bottom": "6",
+   "discard": "9",
+   "v2": 6.911653
+  },
+  {
+   "drawn": "69J",
+   "prob": 48,
+   "top": "J",
+   "middle": "9",
+   "bottom": "",
+   "discard": "6",
+   "v2": 7.093025
+  },
+  {
+   "drawn": "69Q",
+   "prob": 48,
+   "top": "Q",
+   "middle": "9",
+   "bottom": "",
+   "discard": "6",
+   "v2": 9.155153
+  },
+  {
+   "drawn": "69A",
+   "prob": 48,
+   "top": "A",
+   "middle": "9",
+   "bottom": "",
+   "discard": "6",
+   "v2": 13.589589
+  },
+  {
+   "drawn": "6TJ",
+   "prob": 48,
+   "top": "J",
+   "middle": "T",
+   "bottom": "",
+   "discard": "6",
+   "v2": 7.089043
+  },
+  {
+   "drawn": "6TQ",
+   "prob": 48,
+   "top": "Q",
+   "middle": "T",
+   "bottom": "",
+   "discard": "6",
+   "v2": 9.149094
+  },
+  {
+   "drawn": "6TA",
+   "prob": 48,
+   "top": "A",
+   "middle": "T",
+   "bottom": "",
+   "discard": "6",
+   "v2": 13.5792
+  },
+  {
+   "drawn": "6JQ",
+   "prob": 48,
+   "top": "Q",
+   "middle": "J",
+   "bottom": "",
+   "discard": "6",
+   "v2": 9.141312
+  },
+  {
+   "drawn": "6JA",
+   "prob": 48,
+   "top": "A",
+   "middle": "J",
+   "bottom": "",
+   "discard": "6",
+   "v2": 13.564456
+  },
+  {
+   "drawn": "6QA",
+   "prob": 48,
+   "top": "A",
+   "middle": "Q",
+   "bottom": "",
+   "discard": "6",
+   "v2": 13.266259
+  },
+  {
+   "drawn": "235",
+   "prob": 36,
+   "top": "",
+   "middle": "3",
+   "bottom": "2",
+   "discard": "5",
+   "v2": 9.126995
+  },
+  {
+   "drawn": "236",
+   "prob": 36,
+   "top": "",
+   "middle": "3",
+   "bottom": "2",
+   "discard": "6",
+   "v2": 9.12504
+  },
+  {
+   "drawn": "256",
+   "prob": 36,
+   "top": "",
+   "middle": "5",
+   "bottom": "2",
+   "discard": "6",
+   "v2": 9.124805
+  },
+  {
+   "drawn": "345",
+   "prob": 36,
+   "top": "",
+   "middle": "3",
+   "bottom": "4",
+   "discard": "5",
+   "v2": 15.453431
+  },
+  {
+   "drawn": "346",
+   "prob": 36,
+   "top": "",
+   "middle": "3",
+   "bottom": "4",
+   "discard": "6",
+   "v2": 15.450945
+  },
+  {
+   "drawn": "357",
+   "prob": 36,
+   "top": "",
+   "middle": "3",
+   "bottom": "7",
+   "discard": "5",
+   "v2": 9.102093
+  },
+  {
+   "drawn": "358",
+   "prob": 36,
+   "top": "",
+   "middle": "",
+   "bottom": "35",
+   "discard": "8",
+   "v2": 8.356681
+  },
+  {
+   "drawn": "359",
+   "prob": 36,
+   "top": "",
+   "middle": "",
+   "bottom": "35",
+   "discard": "9",
+   "v2": 8.342655
+  },
+  {
+   "drawn": "35T",
+   "prob": 36,
+   "top": "",
+   "middle": "",
+   "bottom": "35",
+   "discard": "T",
+   "v2": 8.304451
+  },
+  {
+   "drawn": "35J",
+   "prob": 36,
+   "top": "",
+   "middle": "",
+   "bottom": "35",
+   "discard": "J",
+   "v2": 8.264425
+  },
+  {
+   "drawn": "35Q",
+   "prob": 36,
+   "top": "Q",
+   "middle": "3",
+   "bottom": "",
+   "discard": "5",
+   "v2": 8.640265
+  },
+  {
+   "drawn": "35A",
+   "prob": 36,
+   "top": "A",
+   "middle": "5",
+   "bottom": "",
+   "discard": "3",
+   "v2": 12.332234
+  },
+  {
+   "drawn": "367",
+   "prob": 36,
+   "top": "",
+   "middle": "3",
+   "bottom": "7",
+   "discard": "6",
+   "v2": 9.100152
+  },
+  {
+   "drawn": "368",
+   "prob": 36,
+   "top": "",
+   "middle": "",
+   "bottom": "36",
+   "discard": "8",
+   "v2": 8.354392
+  },
+  {
+   "drawn": "369",
+   "prob": 36,
+   "top": "",
+   "middle": "",
+   "bottom": "36",
+   "discard": "9",
+   "v2": 8.340128
+  },
+  {
+   "drawn": "36T",
+   "prob": 36,
+   "top": "",
+   "middle": "",
+   "bottom": "36",
+   "discard": "T",
+   "v2": 8.301718
+  },
+  {
+   "drawn": "36J",
+   "prob": 36,
+   "top": "",
+   "middle": "",
+   "bottom": "36",
+   "discard": "J",
+   "v2": 8.261813
+  },
+  {
+   "drawn": "36Q",
+   "prob": 36,
+   "top": "Q",
+   "middle": "3",
+   "bottom": "",
+   "discard": "6",
+   "v2": 8.639534
+  },
+  {
+   "drawn": "36A",
+   "prob": 36,
+   "top": "A",
+   "middle": "3",
+   "bottom": "",
+   "discard": "6",
+   "v2": 12.331186
+  },
+  {
+   "drawn": "456",
+   "prob": 36,
+   "top": "",
+   "middle": "5",
+   "bottom": "4",
+   "discard": "6",
+   "v2": 15.450591
+  },
+  {
+   "drawn": "567",
+   "prob": 36,
+   "top": "",
+   "middle": "5",
+   "bottom": "7",
+   "discard": "6",
+   "v2": 9.099945
+  },
+  {
+   "drawn": "568",
+   "prob": 36,
+   "top": "",
+   "middle": "",
+   "bottom": "56",
+   "discard": "8",
+   "v2": 8.354394
+  },
+  {
+   "drawn": "569",
+   "prob": 36,
+   "top": "",
+   "middle": "",
+   "bottom": "56",
+   "discard": "9",
+   "v2": 8.34013
+  },
+  {
+   "drawn": "56T",
+   "prob": 36,
+   "top": "",
+   "middle": "",
+   "bottom": "56",
+   "discard": "T",
+   "v2": 8.30172
+  },
+  {
+   "drawn": "56J",
+   "prob": 36,
+   "top": "",
+   "middle": "",
+   "bottom": "56",
+   "discard": "J",
+   "v2": 8.261816
+  },
+  {
+   "drawn": "56Q",
+   "prob": 36,
+   "top": "Q",
+   "middle": "5",
+   "bottom": "",
+   "discard": "6",
+   "v2": 8.639531
+  },
+  {
+   "drawn": "56A",
+   "prob": 36,
+   "top": "A",
+   "middle": "5",
+   "bottom": "",
+   "discard": "6",
+   "v2": 12.331186
+  },
+  {
+   "drawn": "X24",
+   "prob": 32,
+   "top": "X",
+   "middle": "",
+   "bottom": "4",
+   "discard": "2",
+   "v2": 31.287826
+  },
+  {
+   "drawn": "X27",
+   "prob": 32,
+   "top": "X",
+   "middle": "",
+   "bottom": "7",
+   "discard": "2",
+   "v2": 22.011373
+  },
+  {
+   "drawn": "X28",
+   "prob": 32,
+   "top": "X",
+   "middle": "",
+   "bottom": "2",
+   "discard": "8",
+   "v2": 22.005774
+  },
+  {
+   "drawn": "X29",
+   "prob": 32,
+   "top": "X",
+   "middle": "",
+   "bottom": "2",
+   "discard": "9",
+   "v2": 21.997174
+  },
+  {
+   "drawn": "X2T",
+   "prob": 32,
+   "top": "X",
+   "middle": "",
+   "bottom": "2",
+   "discard": "T",
+   "v2": 21.984628
+  },
+  {
+   "drawn": "X2J",
+   "prob": 32,
+   "top": "X",
+   "middle": "",
+   "bottom": "2",
+   "discard": "J",
+   "v2": 21.945999
+  },
+  {
+   "drawn": "X2Q",
+   "prob": 32,
+   "top": "X",
+   "middle": "",
+   "bottom": "2",
+   "discard": "Q",
+   "v2": 21.604081
+  },
+  {
+   "drawn": "X2A",
+   "prob": 32,
+   "top": "A",
+   "middle": "",
+   "bottom": "X",
+   "discard": "2",
+   "v2": 24.229176
+  },
+  {
+   "drawn": "X47",
+   "prob": 32,
+   "top": "X",
+   "middle": "",
+   "bottom": "4",
+   "discard": "7",
+   "v2": 31.282801
+  },
+  {
+   "drawn": "X48",
+   "prob": 32,
+   "top": "X",
+   "middle": "",
+   "bottom": "4",
+   "discard": "8",
+   "v2": 33.169172
+  },
+  {
+   "drawn": "X49",
+   "prob": 32,
+   "top": "X",
+   "middle": "",
+   "bottom": "4",
+   "discard": "9",
+   "v2": 33.156853
+  },
+  {
+   "drawn": "X4T",
+   "prob": 32,
+   "top": "X",
+   "middle": "",
+   "bottom": "4",
+   "discard": "T",
+   "v2": 33.134772
+  },
+  {
+   "drawn": "X4J",
+   "prob": 32,
+   "top": "X",
+   "middle": "",
+   "bottom": "4",
+   "discard": "J",
+   "v2": 33.081744
+  },
+  {
+   "drawn": "X4Q",
+   "prob": 32,
+   "top": "X",
+   "middle": "",
+   "bottom": "4",
+   "discard": "Q",
+   "v2": 32.673424
+  },
+  {
+   "drawn": "X4A",
+   "prob": 32,
+   "top": "X",
+   "middle": "",
+   "bottom": "4",
+   "discard": "A",
+   "v2": 32.204283
+  },
+  {
+   "drawn": "X78",
+   "prob": 32,
+   "top": "X",
+   "middle": "",
+   "bottom": "7",
+   "discard": "8",
+   "v2": 21.986243
+  },
+  {
+   "drawn": "X79",
+   "prob": 32,
+   "top": "X",
+   "middle": "",
+   "bottom": "7",
+   "discard": "9",
+   "v2": 21.977575
+  },
+  {
+   "drawn": "X7T",
+   "prob": 32,
+   "top": "X",
+   "middle": "",
+   "bottom": "7",
+   "discard": "T",
+   "v2": 21.965056
+  },
+  {
+   "drawn": "X7J",
+   "prob": 32,
+   "top": "X",
+   "middle": "",
+   "bottom": "7",
+   "discard": "J",
+   "v2": 21.925656
+  },
+  {
+   "drawn": "X7Q",
+   "prob": 32,
+   "top": "X",
+   "middle": "",
+   "bottom": "7",
+   "discard": "Q",
+   "v2": 21.585613
+  },
+  {
+   "drawn": "X7A",
+   "prob": 32,
+   "top": "A",
+   "middle": "",
+   "bottom": "X",
+   "discard": "7",
+   "v2": 24.226795
+  },
+  {
+   "drawn": "X89",
+   "prob": 32,
+   "top": "X",
+   "middle": "8",
+   "bottom": "",
+   "discard": "9",
+   "v2": 18.597811
+  },
+  {
+   "drawn": "X8T",
+   "prob": 32,
+   "top": "X",
+   "middle": "8",
+   "bottom": "",
+   "discard": "T",
+   "v2": 18.583664
+  },
+  {
+   "drawn": "X8J",
+   "prob": 32,
+   "top": "X",
+   "middle": "J",
+   "bottom": "",
+   "discard": "8",
+   "v2": 18.575191
+  },
+  {
+   "drawn": "X8Q",
+   "prob": 32,
+   "top": "XQ",
+   "middle": "",
+   "bottom": "",
+   "discard": "8",
+   "v2": 20.522505
+  },
+  {
+   "drawn": "X8A",
+   "prob": 32,
+   "top": "A",
+   "middle": "",
+   "bottom": "X",
+   "discard": "8",
+   "v2": 24.43543
+  },
+  {
+   "drawn": "X9T",
+   "prob": 32,
+   "top": "X",
+   "middle": "9",
+   "bottom": "",
+   "discard": "T",
+   "v2": 18.575839
+  },
+  {
+   "drawn": "X9J",
+   "prob": 32,
+   "top": "X",
+   "middle": "J",
+   "bottom": "",
+   "discard": "9",
+   "v2": 18.569184
+  },
+  {
+   "drawn": "X9Q",
+   "prob": 32,
+   "top": "XQ",
+   "middle": "",
+   "bottom": "",
+   "discard": "9",
+   "v2": 20.522505
+  },
+  {
+   "drawn": "X9A",
+   "prob": 32,
+   "top": "A",
+   "middle": "",
+   "bottom": "X",
+   "discard": "9",
+   "v2": 24.432532
+  },
+  {
+   "drawn": "XTJ",
+   "prob": 32,
+   "top": "X",
+   "middle": "J",
+   "bottom": "",
+   "discard": "T",
+   "v2": 18.541695
+  },
+  {
+   "drawn": "XTQ",
+   "prob": 32,
+   "top": "XQ",
+   "middle": "",
+   "bottom": "",
+   "discard": "T",
+   "v2": 20.522505
+  },
+  {
+   "drawn": "XTA",
+   "prob": 32,
+   "top": "A",
+   "middle": "",
+   "bottom": "X",
+   "discard": "T",
+   "v2": 24.42489
+  },
+  {
+   "drawn": "XJQ",
+   "prob": 32,
+   "top": "XQ",
+   "middle": "",
+   "bottom": "",
+   "discard": "J",
+   "v2": 20.522505
+  },
+  {
+   "drawn": "XJA",
+   "prob": 32,
+   "top": "A",
+   "middle": "",
+   "bottom": "X",
+   "discard": "J",
+   "v2": 24.416346
+  },
+  {
+   "drawn": "XQA",
+   "prob": 32,
+   "top": "A",
+   "middle": "",
+   "bottom": "X",
+   "discard": "Q",
+   "v2": 24.33602
+  },
+  {
+   "drawn": "24K",
+   "prob": 32,
+   "top": "",
+   "middle": "K",
+   "bottom": "4",
+   "discard": "2",
+   "v2": 26.480849
+  },
+  {
+   "drawn": "27K",
+   "prob": 32,
+   "top": "",
+   "middle": "K",
+   "bottom": "7",
+   "discard": "2",
+   "v2": 18.373392
+  },
+  {
+   "drawn": "28K",
+   "prob": 32,
+   "top": "",
+   "middle": "K",
+   "bottom": "2",
+   "discard": "8",
+   "v2": 18.351586
+  },
+  {
+   "drawn": "29K",
+   "prob": 32,
+   "top": "",
+   "middle": "K",
+   "bottom": "2",
+   "discard": "9",
+   "v2": 18.323457
+  },
+  {
+   "drawn": "2TK",
+   "prob": 32,
+   "top": "",
+   "middle": "K",
+   "bottom": "2",
+   "discard": "T",
+   "v2": 18.285934
+  },
+  {
+   "drawn": "2JK",
+   "prob": 32,
+   "top": "",
+   "middle": "K",
+   "bottom": "2",
+   "discard": "J",
+   "v2": 18.236245
+  },
+  {
+   "drawn": "2QK",
+   "prob": 32,
+   "top": "",
+   "middle": "K",
+   "bottom": "2",
+   "discard": "Q",
+   "v2": 17.861504
+  },
+  {
+   "drawn": "2KA",
+   "prob": 32,
+   "top": "A",
+   "middle": "K",
+   "bottom": "",
+   "discard": "2",
+   "v2": 17.728552
+  },
+  {
+   "drawn": "47K",
+   "prob": 32,
+   "top": "",
+   "middle": "K",
+   "bottom": "4",
+   "discard": "7",
+   "v2": 26.462886
+  },
+  {
+   "drawn": "48K",
+   "prob": 32,
+   "top": "",
+   "middle": "K",
+   "bottom": "4",
+   "discard": "8",
+   "v2": 28.048729
+  },
+  {
+   "drawn": "49K",
+   "prob": 32,
+   "top": "",
+   "middle": "K",
+   "bottom": "4",
+   "discard": "9",
+   "v2": 28.011949
+  },
+  {
+   "drawn": "4TK",
+   "prob": 32,
+   "top": "",
+   "middle": "K",
+   "bottom": "4",
+   "discard": "T",
+   "v2": 27.962624
+  },
+  {
+   "drawn": "4JK",
+   "prob": 32,
+   "top": "",
+   "middle": "K",
+   "bottom": "4",
+   "discard": "J",
+   "v2": 27.898555
+  },
+  {
+   "drawn": "4QK",
+   "prob": 32,
+   "top": "",
+   "middle": "K",
+   "bottom": "4",
+   "discard": "Q",
+   "v2": 27.456772
+  },
+  {
+   "drawn": "4KA",
+   "prob": 32,
+   "top": "",
+   "middle": "K",
+   "bottom": "4",
+   "discard": "A",
+   "v2": 26.385057
+  },
+  {
+   "drawn": "78K",
+   "prob": 32,
+   "top": "",
+   "middle": "K",
+   "bottom": "7",
+   "discard": "8",
+   "v2": 18.285063
+  },
+  {
+   "drawn": "79K",
+   "prob": 32,
+   "top": "",
+   "middle": "K",
+   "bottom": "7",
+   "discard": "9",
+   "v2": 18.257216
+  },
+  {
+   "drawn": "7TK",
+   "prob": 32,
+   "top": "",
+   "middle": "K",
+   "bottom": "7",
+   "discard": "T",
+   "v2": 18.219696
+  },
+  {
+   "drawn": "7JK",
+   "prob": 32,
+   "top": "",
+   "middle": "K",
+   "bottom": "7",
+   "discard": "J",
+   "v2": 18.170058
+  },
+  {
+   "drawn": "7QK",
+   "prob": 32,
+   "top": "",
+   "middle": "K",
+   "bottom": "7",
+   "discard": "Q",
+   "v2": 17.802864
+  },
+  {
+   "drawn": "7KA",
+   "prob": 32,
+   "top": "A",
+   "middle": "K",
+   "bottom": "",
+   "discard": "7",
+   "v2": 17.727494
+  },
+  {
+   "drawn": "89K",
+   "prob": 32,
+   "top": "9",
+   "middle": "K",
+   "bottom": "",
+   "discard": "8",
+   "v2": 14.465017
+  },
+  {
+   "drawn": "8TK",
+   "prob": 32,
+   "top": "T",
+   "middle": "K",
+   "bottom": "",
+   "discard": "8",
+   "v2": 14.712809
+  },
+  {
+   "drawn": "8JK",
+   "prob": 32,
+   "top": "J",
+   "middle": "K",
+   "bottom": "",
+   "discard": "8",
+   "v2": 14.970823
+  },
+  {
+   "drawn": "8QK",
+   "prob": 32,
+   "top": "Q",
+   "middle": "K",
+   "bottom": "",
+   "discard": "8",
+   "v2": 16.47352
+  },
+  {
+   "drawn": "8KA",
+   "prob": 32,
+   "top": "A",
+   "middle": "K",
+   "bottom": "",
+   "discard": "8",
+   "v2": 18.990863
+  },
+  {
+   "drawn": "9TK",
+   "prob": 32,
+   "top": "T",
+   "middle": "K",
+   "bottom": "",
+   "discard": "9",
+   "v2": 14.710464
+  },
+  {
+   "drawn": "9JK",
+   "prob": 32,
+   "top": "J",
+   "middle": "K",
+   "bottom": "",
+   "discard": "9",
+   "v2": 14.968447
+  },
+  {
+   "drawn": "9QK",
+   "prob": 32,
+   "top": "Q",
+   "middle": "K",
+   "bottom": "",
+   "discard": "9",
+   "v2": 16.471442
+  },
+  {
+   "drawn": "9KA",
+   "prob": 32,
+   "top": "A",
+   "middle": "K",
+   "bottom": "",
+   "discard": "9",
+   "v2": 18.988214
+  },
+  {
+   "drawn": "TJK",
+   "prob": 32,
+   "top": "J",
+   "middle": "K",
+   "bottom": "",
+   "discard": "T",
+   "v2": 14.965666
+  },
+  {
+   "drawn": "TQK",
+   "prob": 32,
+   "top": "Q",
+   "middle": "K",
+   "bottom": "",
+   "discard": "T",
+   "v2": 16.468392
+  },
+  {
+   "drawn": "TKA",
+   "prob": 32,
+   "top": "A",
+   "middle": "K",
+   "bottom": "",
+   "discard": "T",
+   "v2": 18.982334
+  },
+  {
+   "drawn": "JQK",
+   "prob": 32,
+   "top": "Q",
+   "middle": "K",
+   "bottom": "",
+   "discard": "J",
+   "v2": 16.464932
+  },
+  {
+   "drawn": "JKA",
+   "prob": 32,
+   "top": "A",
+   "middle": "K",
+   "bottom": "",
+   "discard": "J",
+   "v2": 18.974343
+  },
+  {
+   "drawn": "QKA",
+   "prob": 32,
+   "top": "A",
+   "middle": "K",
+   "bottom": "",
+   "discard": "Q",
+   "v2": 18.859451
+  },
+  {
+   "drawn": "356",
+   "prob": 27,
+   "top": "",
+   "middle": "",
+   "bottom": "56",
+   "discard": "3",
+   "v2": 8.362743
+  },
+  {
+   "drawn": "X23",
+   "prob": 24,
+   "top": "X",
+   "middle": "",
+   "bottom": "2",
+   "discard": "3",
+   "v2": 22.200405
+  },
+  {
+   "drawn": "X25",
+   "prob": 24,
+   "top": "X",
+   "middle": "",
+   "bottom": "2",
+   "discard": "5",
+   "v2": 22.199777
+  },
+  {
+   "drawn": "X26",
+   "prob": 24,
+   "top": "X",
+   "middle": "",
+   "bottom": "2",
+   "discard": "6",
+   "v2": 22.198145
+  },
+  {
+   "drawn": "X34",
+   "prob": 24,
+   "top": "X",
+   "middle": "",
+   "bottom": "4",
+   "discard": "3",
+   "v2": 33.44992
+  },
+  {
+   "drawn": "X37",
+   "prob": 24,
+   "top": "X",
+   "middle": "",
+   "bottom": "7",
+   "discard": "3",
+   "v2": 22.184534
+  },
+  {
+   "drawn": "X38",
+   "prob": 24,
+   "top": "X",
+   "middle": "8",
+   "bottom": "",
+   "discard": "3",
+   "v2": 18.303625
+  },
+  {
+   "drawn": "X39",
+   "prob": 24,
+   "top": "X",
+   "middle": "9",
+   "bottom": "",
+   "discard": "3",
+   "v2": 18.295047
+  },
+  {
+   "drawn": "X3T",
+   "prob": 24,
+   "top": "X",
+   "middle": "T",
+   "bottom": "",
+   "discard": "3",
+   "v2": 18.280915
+  },
+  {
+   "drawn": "X3J",
+   "prob": 24,
+   "top": "X",
+   "middle": "J",
+   "bottom": "",
+   "discard": "3",
+   "v2": 18.269371
+  },
+  {
+   "drawn": "X3Q",
+   "prob": 24,
+   "top": "XQ",
+   "middle": "",
+   "bottom": "",
+   "discard": "3",
+   "v2": 20.271293
+  },
+  {
+   "drawn": "X3A",
+   "prob": 24,
+   "top": "A",
+   "middle": "",
+   "bottom": "X",
+   "discard": "3",
+   "v2": 24.565208
+  },
+  {
+   "drawn": "X45",
+   "prob": 24,
+   "top": "X",
+   "middle": "",
+   "bottom": "4",
+   "discard": "5",
+   "v2": 33.446908
+  },
+  {
+   "drawn": "X46",
+   "prob": 24,
+   "top": "X",
+   "middle": "",
+   "bottom": "4",
+   "discard": "6",
+   "v2": 33.442411
+  },
+  {
+   "drawn": "X57",
+   "prob": 24,
+   "top": "X",
+   "middle": "",
+   "bottom": "7",
+   "discard": "5",
+   "v2": 22.183936
+  },
+  {
+   "drawn": "X58",
+   "prob": 24,
+   "top": "X",
+   "middle": "8",
+   "bottom": "",
+   "discard": "5",
+   "v2": 18.303004
+  },
+  {
+   "drawn": "X59",
+   "prob": 24,
+   "top": "X",
+   "middle": "9",
+   "bottom": "",
+   "discard": "5",
+   "v2": 18.294432
+  },
+  {
+   "drawn": "X5T",
+   "prob": 24,
+   "top": "X",
+   "middle": "T",
+   "bottom": "",
+   "discard": "5",
+   "v2": 18.280277
+  },
+  {
+   "drawn": "X5J",
+   "prob": 24,
+   "top": "X",
+   "middle": "J",
+   "bottom": "",
+   "discard": "5",
+   "v2": 18.268738
+  },
+  {
+   "drawn": "X5Q",
+   "prob": 24,
+   "top": "XQ",
+   "middle": "",
+   "bottom": "",
+   "discard": "5",
+   "v2": 20.271295
+  },
+  {
+   "drawn": "X5A",
+   "prob": 24,
+   "top": "A",
+   "middle": "",
+   "bottom": "X",
+   "discard": "5",
+   "v2": 24.565208
+  },
+  {
+   "drawn": "X67",
+   "prob": 24,
+   "top": "X",
+   "middle": "",
+   "bottom": "7",
+   "discard": "6",
+   "v2": 22.182415
+  },
+  {
+   "drawn": "X68",
+   "prob": 24,
+   "top": "X",
+   "middle": "8",
+   "bottom": "",
+   "discard": "6",
+   "v2": 18.301544
+  },
+  {
+   "drawn": "X69",
+   "prob": 24,
+   "top": "X",
+   "middle": "9",
+   "bottom": "",
+   "discard": "6",
+   "v2": 18.292969
+  },
+  {
+   "drawn": "X6T",
+   "prob": 24,
+   "top": "X",
+   "middle": "T",
+   "bottom": "",
+   "discard": "6",
+   "v2": 18.278723
+  },
+  {
+   "drawn": "X6J",
+   "prob": 24,
+   "top": "X",
+   "middle": "J",
+   "bottom": "",
+   "discard": "6",
+   "v2": 18.267207
+  },
+  {
+   "drawn": "X6Q",
+   "prob": 24,
+   "top": "XQ",
+   "middle": "",
+   "bottom": "",
+   "discard": "6",
+   "v2": 20.271295
+  },
+  {
+   "drawn": "X6A",
+   "prob": 24,
+   "top": "A",
+   "middle": "",
+   "bottom": "X",
+   "discard": "6",
+   "v2": 24.563661
+  },
+  {
+   "drawn": "224",
+   "prob": 24,
+   "top": "",
+   "middle": "",
+   "bottom": "24",
+   "discard": "2",
+   "v2": 21.283926
+  },
+  {
+   "drawn": "227",
+   "prob": 24,
+   "top": "",
+   "middle": "7",
+   "bottom": "2",
+   "discard": "2",
+   "v2": 9.489482
+  },
+  {
+   "drawn": "228",
+   "prob": 24,
+   "top": "",
+   "middle": "8",
+   "bottom": "2",
+   "discard": "2",
+   "v2": 9.475634
+  },
+  {
+   "drawn": "229",
+   "prob": 24,
+   "top": "",
+   "middle": "9",
+   "bottom": "2",
+   "discard": "2",
+   "v2": 9.452413
+  },
+  {
+   "drawn": "22T",
+   "prob": 24,
+   "top": "T",
+   "middle": "",
+   "bottom": "2",
+   "discard": "2",
+   "v2": 9.427159
+  },
+  {
+   "drawn": "22J",
+   "prob": 24,
+   "top": "J",
+   "middle": "",
+   "bottom": "2",
+   "discard": "2",
+   "v2": 9.688119
+  },
+  {
+   "drawn": "22Q",
+   "prob": 24,
+   "top": "Q",
+   "middle": "",
+   "bottom": "2",
+   "discard": "2",
+   "v2": 11.814048
+  },
+  {
+   "drawn": "22A",
+   "prob": 24,
+   "top": "A",
+   "middle": "",
+   "bottom": "2",
+   "discard": "2",
+   "v2": 16.18738
+  },
+  {
+   "drawn": "23K",
+   "prob": 24,
+   "top": "",
+   "middle": "K",
+   "bottom": "2",
+   "discard": "3",
+   "v2": 18.547011
+  },
+  {
+   "drawn": "244",
+   "prob": 24,
+   "top": "",
+   "middle": "",
+   "bottom": "24",
+   "discard": "4",
+   "v2": 21.283675
+  },
+  {
+   "drawn": "25K",
+   "prob": 24,
+   "top": "",
+   "middle": "K",
+   "bottom": "2",
+   "discard": "5",
+   "v2": 18.544476
+  },
+  {
+   "drawn": "26K",
+   "prob": 24,
+   "top": "",
+   "middle": "K",
+   "bottom": "2",
+   "discard": "6",
+   "v2": 18.54021
+  },
+  {
+   "drawn": "277",
+   "prob": 24,
+   "top": "",
+   "middle": "2",
+   "bottom": "7",
+   "discard": "7",
+   "v2": 9.487275
+  },
+  {
+   "drawn": "288",
+   "prob": 24,
+   "top": "88",
+   "middle": "",
+   "bottom": "",
+   "discard": "2",
+   "v2": 10.081228
+  },
+  {
+   "drawn": "299",
+   "prob": 24,
+   "top": "99",
+   "middle": "",
+   "bottom": "",
+   "discard": "2",
+   "v2": 10.706866
+  },
+  {
+   "drawn": "2TT",
+   "prob": 24,
+   "top": "TT",
+   "middle": "",
+   "bottom": "",
+   "discard": "2",
+   "v2": 11.341759
+  },
+  {
+   "drawn": "2JJ",
+   "prob": 24,
+   "top": "JJ",
+   "middle": "",
+   "bottom": "",
+   "discard": "2",
+   "v2": 11.980241
+  },
+  {
+   "drawn": "2QQ",
+   "prob": 24,
+   "top": "QQ",
+   "middle": "",
+   "bottom": "",
+   "discard": "2",
+   "v2": 16.442735
+  },
+  {
+   "drawn": "2AA",
+   "prob": 24,
+   "top": "AA",
+   "middle": "",
+   "bottom": "",
+   "discard": "2",
+   "v2": 22.886453
+  },
+  {
+   "drawn": "34K",
+   "prob": 24,
+   "top": "",
+   "middle": "K",
+   "bottom": "4",
+   "discard": "3",
+   "v2": 28.362227
+  },
+  {
+   "drawn": "37K",
+   "prob": 24,
+   "top": "",
+   "middle": "K",
+   "bottom": "7",
+   "discard": "3",
+   "v2": 18.496563
+  },
+  {
+   "drawn": "38K",
+   "prob": 24,
+   "top": "8",
+   "middle": "K",
+   "bottom": "",
+   "discard": "3",
+   "v2": 14.227906
+  },
+  {
+   "drawn": "39K",
+   "prob": 24,
+   "top": "9",
+   "middle": "K",
+   "bottom": "",
+   "discard": "3",
+   "v2": 14.464751
+  },
+  {
+   "drawn": "3TK",
+   "prob": 24,
+   "top": "T",
+   "middle": "K",
+   "bottom": "",
+   "discard": "3",
+   "v2": 14.712366
+  },
+  {
+   "drawn": "3JK",
+   "prob": 24,
+   "top": "J",
+   "middle": "K",
+   "bottom": "",
+   "discard": "3",
+   "v2": 14.970248
+  },
+  {
+   "drawn": "3QK",
+   "prob": 24,
+   "top": "Q",
+   "middle": "K",
+   "bottom": "",
+   "discard": "3",
+   "v2": 16.472877
+  },
+  {
+   "drawn": "3KA",
+   "prob": 24,
+   "top": "A",
+   "middle": "K",
+   "bottom": "",
+   "discard": "3",
+   "v2": 18.992349
+  },
+  {
+   "drawn": "447",
+   "prob": 24,
+   "top": "",
+   "middle": "",
+   "bottom": "47",
+   "discard": "4",
+   "v2": 21.241738
+  },
+  {
+   "drawn": "448",
+   "prob": 24,
+   "top": "",
+   "middle": "8",
+   "bottom": "4",
+   "discard": "4",
+   "v2": 15.912896
+  },
+  {
+   "drawn": "449",
+   "prob": 24,
+   "top": "",
+   "middle": "9",
+   "bottom": "4",
+   "discard": "4",
+   "v2": 15.884675
+  },
+  {
+   "drawn": "44T",
+   "prob": 24,
+   "top": "T",
+   "middle": "",
+   "bottom": "4",
+   "discard": "4",
+   "v2": 16.008892
+  },
+  {
+   "drawn": "44J",
+   "prob": 24,
+   "top": "J",
+   "middle": "",
+   "bottom": "4",
+   "discard": "4",
+   "v2": 16.348622
+  },
+  {
+   "drawn": "44Q",
+   "prob": 24,
+   "top": "Q",
+   "middle": "",
+   "bottom": "4",
+   "discard": "4",
+   "v2": 19.000286
+  },
+  {
+   "drawn": "44A",
+   "prob": 24,
+   "top": "A",
+   "middle": "",
+   "bottom": "4",
+   "discard": "4",
+   "v2": 24.00153
+  },
+  {
+   "drawn": "45K",
+   "prob": 24,
+   "top": "",
+   "middle": "K",
+   "bottom": "4",
+   "discard": "5",
+   "v2": 28.357982
+  },
+  {
+   "drawn": "46K",
+   "prob": 24,
+   "top": "",
+   "middle": "K",
+   "bottom": "4",
+   "discard": "6",
+   "v2": 28.351472
+  },
+  {
+   "drawn": "477",
+   "prob": 24,
+   "top": "",
+   "middle": "",
+   "bottom": "47",
+   "discard": "7",
+   "v2": 21.23338
+  },
+  {
+   "drawn": "488",
+   "prob": 24,
+   "top": "",
+   "middle": "8",
+   "bottom": "4",
+   "discard": "8",
+   "v2": 15.302518
+  },
+  {
+   "drawn": "499",
+   "prob": 24,
+   "top": "",
+   "middle": "9",
+   "bottom": "4",
+   "discard": "9",
+   "v2": 15.264585
+  },
+  {
+   "drawn": "4TT",
+   "prob": 24,
+   "top": "",
+   "middle": "T",
+   "bottom": "4",
+   "discard": "T",
+   "v2": 15.214666
+  },
+  {
+   "drawn": "4JJ",
+   "prob": 24,
+   "top": "",
+   "middle": "J",
+   "bottom": "4",
+   "discard": "J",
+   "v2": 15.150836
+  },
+  {
+   "drawn": "4QQ",
+   "prob": 24,
+   "top": "Q",
+   "middle": "",
+   "bottom": "4",
+   "discard": "Q",
+   "v2": 16.682008
+  },
+  {
+   "drawn": "4AA",
+   "prob": 24,
+   "top": "A",
+   "middle": "",
+   "bottom": "4",
+   "discard": "A",
+   "v2": 21.211036
+  },
+  {
+   "drawn": "57K",
+   "prob": 24,
+   "top": "",
+   "middle": "K",
+   "bottom": "7",
+   "discard": "5",
+   "v2": 18.49403
+  },
+  {
+   "drawn": "58K",
+   "prob": 24,
+   "top": "8",
+   "middle": "K",
+   "bottom": "",
+   "discard": "5",
+   "v2": 14.227906
+  },
+  {
+   "drawn": "59K",
+   "prob": 24,
+   "top": "9",
+   "middle": "K",
+   "bottom": "",
+   "discard": "5",
+   "v2": 14.464751
+  },
+  {
+   "drawn": "5TK",
+   "prob": 24,
+   "top": "T",
+   "middle": "K",
+   "bottom": "",
+   "discard": "5",
+   "v2": 14.712366
+  },
+  {
+   "drawn": "5JK",
+   "prob": 24,
+   "top": "J",
+   "middle": "K",
+   "bottom": "",
+   "discard": "5",
+   "v2": 14.970248
+  },
+  {
+   "drawn": "5QK",
+   "prob": 24,
+   "top": "Q",
+   "middle": "K",
+   "bottom": "",
+   "discard": "5",
+   "v2": 16.472877
+  },
+  {
+   "drawn": "5KA",
+   "prob": 24,
+   "top": "A",
+   "middle": "K",
+   "bottom": "",
+   "discard": "5",
+   "v2": 18.992349
+  },
+  {
+   "drawn": "67K",
+   "prob": 24,
+   "top": "",
+   "middle": "K",
+   "bottom": "7",
+   "discard": "6",
+   "v2": 18.489728
+  },
+  {
+   "drawn": "68K",
+   "prob": 24,
+   "top": "8",
+   "middle": "K",
+   "bottom": "",
+   "discard": "6",
+   "v2": 14.227092
+  },
+  {
+   "drawn": "69K",
+   "prob": 24,
+   "top": "9",
+   "middle": "K",
+   "bottom": "",
+   "discard": "6",
+   "v2": 14.463966
+  },
+  {
+   "drawn": "6TK",
+   "prob": 24,
+   "top": "T",
+   "middle": "K",
+   "bottom": "",
+   "discard": "6",
+   "v2": 14.711583
+  },
+  {
+   "drawn": "6JK",
+   "prob": 24,
+   "top": "J",
+   "middle": "K",
+   "bottom": "",
+   "discard": "6",
+   "v2": 14.969465
+  },
+  {
+   "drawn": "6QK",
+   "prob": 24,
+   "top": "Q",
+   "middle": "K",
+   "bottom": "",
+   "discard": "6",
+   "v2": 16.471995
+  },
+  {
+   "drawn": "6KA",
+   "prob": 24,
+   "top": "A",
+   "middle": "K",
+   "bottom": "",
+   "discard": "6",
+   "v2": 18.991793
+  },
+  {
+   "drawn": "778",
+   "prob": 24,
+   "top": "",
+   "middle": "8",
+   "bottom": "7",
+   "discard": "7",
+   "v2": 9.44053
+  },
+  {
+   "drawn": "779",
+   "prob": 24,
+   "top": "",
+   "middle": "9",
+   "bottom": "7",
+   "discard": "7",
+   "v2": 9.417423
+  },
+  {
+   "drawn": "77T",
+   "prob": 24,
+   "top": "T",
+   "middle": "",
+   "bottom": "7",
+   "discard": "7",
+   "v2": 9.424175
+  },
+  {
+   "drawn": "77J",
+   "prob": 24,
+   "top": "J",
+   "middle": "",
+   "bottom": "7",
+   "discard": "7",
+   "v2": 9.685364
+  },
+  {
+   "drawn": "77Q",
+   "prob": 24,
+   "top": "Q",
+   "middle": "",
+   "bottom": "7",
+   "discard": "7",
+   "v2": 11.809325
+  },
+  {
+   "drawn": "77A",
+   "prob": 24,
+   "top": "A",
+   "middle": "",
+   "bottom": "7",
+   "discard": "7",
+   "v2": 16.182683
+  },
+  {
+   "drawn": "788",
+   "prob": 24,
+   "top": "88",
+   "middle": "",
+   "bottom": "",
+   "discard": "7",
+   "v2": 10.081228
+  },
+  {
+   "drawn": "799",
+   "prob": 24,
+   "top": "99",
+   "middle": "",
+   "bottom": "",
+   "discard": "7",
+   "v2": 10.706866
+  },
+  {
+   "drawn": "7TT",
+   "prob": 24,
+   "top": "TT",
+   "middle": "",
+   "bottom": "",
+   "discard": "7",
+   "v2": 11.341759
+  },
+  {
+   "drawn": "7JJ",
+   "prob": 24,
+   "top": "JJ",
+   "middle": "",
+   "bottom": "",
+   "discard": "7",
+   "v2": 11.980241
+  },
+  {
+   "drawn": "7QQ",
+   "prob": 24,
+   "top": "QQ",
+   "middle": "",
+   "bottom": "",
+   "discard": "7",
+   "v2": 16.442735
+  },
+  {
+   "drawn": "7AA",
+   "prob": 24,
+   "top": "AA",
+   "middle": "",
+   "bottom": "",
+   "discard": "7",
+   "v2": 22.886453
+  },
+  {
+   "drawn": "889",
+   "prob": 24,
+   "top": "88",
+   "middle": "",
+   "bottom": "",
+   "discard": "9",
+   "v2": 11.000589
+  },
+  {
+   "drawn": "88T",
+   "prob": 24,
+   "top": "88",
+   "middle": "",
+   "bottom": "",
+   "discard": "T",
+   "v2": 11.000589
+  },
+  {
+   "drawn": "88J",
+   "prob": 24,
+   "top": "88",
+   "middle": "",
+   "bottom": "",
+   "discard": "J",
+   "v2": 11.000589
+  },
+  {
+   "drawn": "88Q",
+   "prob": 24,
+   "top": "88",
+   "middle": "",
+   "bottom": "",
+   "discard": "Q",
+   "v2": 11.000589
+  },
+  {
+   "drawn": "88A",
+   "prob": 24,
+   "top": "A",
+   "middle": "8",
+   "bottom": "",
+   "discard": "8",
+   "v2": 12.645369
+  },
+  {
+   "drawn": "899",
+   "prob": 24,
+   "top": "99",
+   "middle": "",
+   "bottom": "",
+   "discard": "8",
+   "v2": 11.612819
+  },
+  {
+   "drawn": "8TT",
+   "prob": 24,
+   "top": "TT",
+   "middle": "",
+   "bottom": "",
+   "discard": "8",
+   "v2": 12.23297
+  },
+  {
+   "drawn": "8JJ",
+   "prob": 24,
+   "top": "JJ",
+   "middle": "",
+   "bottom": "",
+   "discard": "8",
+   "v2": 12.872986
+  },
+  {
+   "drawn": "8QQ",
+   "prob": 24,
+   "top": "QQ",
+   "middle": "",
+   "bottom": "",
+   "discard": "8",
+   "v2": 17.307662
+  },
+  {
+   "drawn": "8AA",
+   "prob": 24,
+   "top": "AA",
+   "middle": "",
+   "bottom": "",
+   "discard": "8",
+   "v2": 23.807295
+  },
+  {
+   "drawn": "99T",
+   "prob": 24,
+   "top": "99",
+   "middle": "",
+   "bottom": "",
+   "discard": "T",
+   "v2": 11.612819
+  },
+  {
+   "drawn": "99J",
+   "prob": 24,
+   "top": "99",
+   "middle": "",
+   "bottom": "",
+   "discard": "J",
+   "v2": 11.612819
+  },
+  {
+   "drawn": "99Q",
+   "prob": 24,
+   "top": "99",
+   "middle": "",
+   "bottom": "",
+   "discard": "Q",
+   "v2": 11.612819
+  },
+  {
+   "drawn": "99A",
+   "prob": 24,
+   "top": "A",
+   "middle": "9",
+   "bottom": "",
+   "discard": "9",
+   "v2": 12.636845
+  },
+  {
+   "drawn": "9TT",
+   "prob": 24,
+   "top": "TT",
+   "middle": "",
+   "bottom": "",
+   "discard": "9",
+   "v2": 12.23297
+  },
+  {
+   "drawn": "9JJ",
+   "prob": 24,
+   "top": "JJ",
+   "middle": "",
+   "bottom": "",
+   "discard": "9",
+   "v2": 12.872986
+  },
+  {
+   "drawn": "9QQ",
+   "prob": 24,
+   "top": "QQ",
+   "middle": "",
+   "bottom": "",
+   "discard": "9",
+   "v2": 17.307662
+  },
+  {
+   "drawn": "9AA",
+   "prob": 24,
+   "top": "AA",
+   "middle": "",
+   "bottom": "",
+   "discard": "9",
+   "v2": 23.807295
+  },
+  {
+   "drawn": "TTJ",
+   "prob": 24,
+   "top": "TT",
+   "middle": "",
+   "bottom": "",
+   "discard": "J",
+   "v2": 12.23297
+  },
+  {
+   "drawn": "TTQ",
+   "prob": 24,
+   "top": "TT",
+   "middle": "",
+   "bottom": "",
+   "discard": "Q",
+   "v2": 12.23297
+  },
+  {
+   "drawn": "TTA",
+   "prob": 24,
+   "top": "A",
+   "middle": "T",
+   "bottom": "",
+   "discard": "T",
+   "v2": 12.623677
+  },
+  {
+   "drawn": "TJJ",
+   "prob": 24,
+   "top": "JJ",
+   "middle": "",
+   "bottom": "",
+   "discard": "T",
+   "v2": 12.872986
+  },
+  {
+   "drawn": "TQQ",
+   "prob": 24,
+   "top": "QQ",
+   "middle": "",
+   "bottom": "",
+   "discard": "T",
+   "v2": 17.307662
+  },
+  {
+   "drawn": "TAA",
+   "prob": 24,
+   "top": "AA",
+   "middle": "",
+   "bottom": "",
+   "discard": "T",
+   "v2": 23.807295
+  },
+  {
+   "drawn": "JJQ",
+   "prob": 24,
+   "top": "JJ",
+   "middle": "",
+   "bottom": "",
+   "discard": "Q",
+   "v2": 12.872986
+  },
+  {
+   "drawn": "JJA",
+   "prob": 24,
+   "top": "JJ",
+   "middle": "",
+   "bottom": "",
+   "discard": "A",
+   "v2": 12.853631
+  },
+  {
+   "drawn": "JQQ",
+   "prob": 24,
+   "top": "QQ",
+   "middle": "",
+   "bottom": "",
+   "discard": "J",
+   "v2": 17.307662
+  },
+  {
+   "drawn": "JAA",
+   "prob": 24,
+   "top": "AA",
+   "middle": "",
+   "bottom": "",
+   "discard": "J",
+   "v2": 23.807295
+  },
+  {
+   "drawn": "QQA",
+   "prob": 24,
+   "top": "QQ",
+   "middle": "",
+   "bottom": "",
+   "discard": "A",
+   "v2": 17.268319
+  },
+  {
+   "drawn": "QAA",
+   "prob": 24,
+   "top": "AA",
+   "middle": "",
+   "bottom": "",
+   "discard": "Q",
+   "v2": 23.807295
+  },
+  {
+   "drawn": "X35",
+   "prob": 18,
+   "top": "X",
+   "middle": "3",
+   "bottom": "",
+   "discard": "5",
+   "v2": 17.202942
+  },
+  {
+   "drawn": "X36",
+   "prob": 18,
+   "top": "X",
+   "middle": "3",
+   "bottom": "",
+   "discard": "6",
+   "v2": 17.201681
+  },
+  {
+   "drawn": "X56",
+   "prob": 18,
+   "top": "X",
+   "middle": "5",
+   "bottom": "",
+   "discard": "6",
+   "v2": 17.200992
+  },
+  {
+   "drawn": "223",
+   "prob": 18,
+   "top": "",
+   "middle": "2",
+   "bottom": "2",
+   "discard": "3",
+   "v2": 9.127291
+  },
+  {
+   "drawn": "225",
+   "prob": 18,
+   "top": "",
+   "middle": "2",
+   "bottom": "2",
+   "discard": "5",
+   "v2": 9.12709
+  },
+  {
+   "drawn": "226",
+   "prob": 18,
+   "top": "",
+   "middle": "2",
+   "bottom": "2",
+   "discard": "6",
+   "v2": 9.125135
+  },
+  {
+   "drawn": "344",
+   "prob": 18,
+   "top": "",
+   "middle": "3",
+   "bottom": "4",
+   "discard": "4",
+   "v2": 15.453599
+  },
+  {
+   "drawn": "35K",
+   "prob": 18,
+   "top": "",
+   "middle": "5K",
+   "bottom": "",
+   "discard": "3",
+   "v2": 12.282708
+  },
+  {
+   "drawn": "36K",
+   "prob": 18,
+   "top": "",
+   "middle": "6K",
+   "bottom": "",
+   "discard": "3",
+   "v2": 12.278083
+  },
+  {
+   "drawn": "377",
+   "prob": 18,
+   "top": "",
+   "middle": "3",
+   "bottom": "7",
+   "discard": "7",
+   "v2": 9.096884
+  },
+  {
+   "drawn": "388",
+   "prob": 18,
+   "top": "88",
+   "middle": "",
+   "bottom": "",
+   "discard": "3",
+   "v2": 10.929864
+  },
+  {
+   "drawn": "399",
+   "prob": 18,
+   "top": "99",
+   "middle": "",
+   "bottom": "",
+   "discard": "3",
+   "v2": 11.533876
+  },
+  {
+   "drawn": "3TT",
+   "prob": 18,
+   "top": "TT",
+   "middle": "",
+   "bottom": "",
+   "discard": "3",
+   "v2": 12.145132
+  },
+  {
+   "drawn": "3JJ",
+   "prob": 18,
+   "top": "JJ",
+   "middle": "",
+   "bottom": "",
+   "discard": "3",
+   "v2": 12.76216
+  },
+  {
+   "drawn": "3QQ",
+   "prob": 18,
+   "top": "QQ",
+   "middle": "",
+   "bottom": "",
+   "discard": "3",
+   "v2": 17.080676
+  },
+  {
+   "drawn": "3AA",
+   "prob": 18,
+   "top": "AA",
+   "middle": "",
+   "bottom": "",
+   "discard": "3",
+   "v2": 23.928495
+  },
+  {
+   "drawn": "445",
+   "prob": 18,
+   "top": "",
+   "middle": "4",
+   "bottom": "4",
+   "discard": "5",
+   "v2": 15.453272
+  },
+  {
+   "drawn": "446",
+   "prob": 18,
+   "top": "",
+   "middle": "4",
+   "bottom": "4",
+   "discard": "6",
+   "v2": 15.450786
+  },
+  {
+   "drawn": "56K",
+   "prob": 18,
+   "top": "",
+   "middle": "6K",
+   "bottom": "",
+   "discard": "5",
+   "v2": 12.275888
+  },
+  {
+   "drawn": "577",
+   "prob": 18,
+   "top": "",
+   "middle": "5",
+   "bottom": "7",
+   "discard": "7",
+   "v2": 9.096677
+  },
+  {
+   "drawn": "588",
+   "prob": 18,
+   "top": "88",
+   "middle": "",
+   "bottom": "",
+   "discard": "5",
+   "v2": 10.929864
+  },
+  {
+   "drawn": "599",
+   "prob": 18,
+   "top": "99",
+   "middle": "",
+   "bottom": "",
+   "discard": "5",
+   "v2": 11.533876
+  },
+  {
+   "drawn": "5TT",
+   "prob": 18,
+   "top": "TT",
+   "middle": "",
+   "bottom": "",
+   "discard": "5",
+   "v2": 12.145132
+  },
+  {
+   "drawn": "5JJ",
+   "prob": 18,
+   "top": "JJ",
+   "middle": "",
+   "bottom": "",
+   "discard": "5",
+   "v2": 12.76216
+  },
+  {
+   "drawn": "5QQ",
+   "prob": 18,
+   "top": "QQ",
+   "middle": "",
+   "bottom": "",
+   "discard": "5",
+   "v2": 17.080676
+  },
+  {
+   "drawn": "5AA",
+   "prob": 18,
+   "top": "AA",
+   "middle": "",
+   "bottom": "",
+   "discard": "5",
+   "v2": 23.928495
+  },
+  {
+   "drawn": "677",
+   "prob": 18,
+   "top": "",
+   "middle": "6",
+   "bottom": "7",
+   "discard": "7",
+   "v2": 9.093697
+  },
+  {
+   "drawn": "688",
+   "prob": 18,
+   "top": "88",
+   "middle": "",
+   "bottom": "",
+   "discard": "6",
+   "v2": 10.929864
+  },
+  {
+   "drawn": "699",
+   "prob": 18,
+   "top": "99",
+   "middle": "",
+   "bottom": "",
+   "discard": "6",
+   "v2": 11.533876
+  },
+  {
+   "drawn": "6TT",
+   "prob": 18,
+   "top": "TT",
+   "middle": "",
+   "bottom": "",
+   "discard": "6",
+   "v2": 12.145132
+  },
+  {
+   "drawn": "6JJ",
+   "prob": 18,
+   "top": "JJ",
+   "middle": "",
+   "bottom": "",
+   "discard": "6",
+   "v2": 12.76216
+  },
+  {
+   "drawn": "6QQ",
+   "prob": 18,
+   "top": "QQ",
+   "middle": "",
+   "bottom": "",
+   "discard": "6",
+   "v2": 17.080676
+  },
+  {
+   "drawn": "6AA",
+   "prob": 18,
+   "top": "AA",
+   "middle": "",
+   "bottom": "",
+   "discard": "6",
+   "v2": 23.928495
+  },
+  {
+   "drawn": "X2K",
+   "prob": 16,
+   "top": "X",
+   "middle": "K",
+   "bottom": "",
+   "discard": "2",
+   "v2": 30.618259
+  },
+  {
+   "drawn": "X4K",
+   "prob": 16,
+   "top": "X",
+   "middle": "",
+   "bottom": "4",
+   "discard": "K",
+   "v2": 28.911558
+  },
+  {
+   "drawn": "X7K",
+   "prob": 16,
+   "top": "X",
+   "middle": "K",
+   "bottom": "",
+   "discard": "7",
+   "v2": 30.598166
+  },
+  {
+   "drawn": "X8K",
+   "prob": 16,
+   "top": "X",
+   "middle": "K",
+   "bottom": "",
+   "discard": "8",
+   "v2": 32.534075
+  },
+  {
+   "drawn": "X9K",
+   "prob": 16,
+   "top": "X",
+   "middle": "K",
+   "bottom": "",
+   "discard": "9",
+   "v2": 32.506836
+  },
+  {
+   "drawn": "XTK",
+   "prob": 16,
+   "top": "X",
+   "middle": "K",
+   "bottom": "",
+   "discard": "T",
+   "v2": 32.469793
+  },
+  {
+   "drawn": "XJK",
+   "prob": 16,
+   "top": "X",
+   "middle": "K",
+   "bottom": "",
+   "discard": "J",
+   "v2": 32.416538
+  },
+  {
+   "drawn": "XQK",
+   "prob": 16,
+   "top": "X",
+   "middle": "K",
+   "bottom": "",
+   "discard": "Q",
+   "v2": 32.132871
+  },
+  {
+   "drawn": "XKA",
+   "prob": 16,
+   "top": "X",
+   "middle": "K",
+   "bottom": "",
+   "discard": "A",
+   "v2": 32.096013
+  },
+  {
+   "drawn": "X22",
+   "prob": 12,
+   "top": "X",
+   "middle": "",
+   "bottom": "2",
+   "discard": "2",
+   "v2": 22.200691
+  },
+  {
+   "drawn": "X3K",
+   "prob": 12,
+   "top": "X",
+   "middle": "K",
+   "bottom": "",
+   "discard": "3",
+   "v2": 32.788699
+  },
+  {
+   "drawn": "X44",
+   "prob": 12,
+   "top": "X",
+   "middle": "",
+   "bottom": "4",
+   "discard": "4",
+   "v2": 33.448448
+  },
+  {
+   "drawn": "X5K",
+   "prob": 12,
+   "top": "X",
+   "middle": "K",
+   "bottom": "",
+   "discard": "5",
+   "v2": 32.783237
+  },
+  {
+   "drawn": "X6K",
+   "prob": 12,
+   "top": "X",
+   "middle": "K",
+   "bottom": "",
+   "discard": "6",
+   "v2": 32.780276
+  },
+  {
+   "drawn": "X77",
+   "prob": 12,
+   "top": "X",
+   "middle": "",
+   "bottom": "7",
+   "discard": "7",
+   "v2": 22.178409
+  },
+  {
+   "drawn": "X88",
+   "prob": 12,
+   "top": "X",
+   "middle": "8",
+   "bottom": "",
+   "discard": "8",
+   "v2": 18.011919
+  },
+  {
+   "drawn": "X99",
+   "prob": 12,
+   "top": "X",
+   "middle": "9",
+   "bottom": "",
+   "discard": "9",
+   "v2": 17.998525
+  },
+  {
+   "drawn": "XTT",
+   "prob": 12,
+   "top": "X",
+   "middle": "T",
+   "bottom": "",
+   "discard": "T",
+   "v2": 17.977377
+  },
+  {
+   "drawn": "XJJ",
+   "prob": 12,
+   "top": "X",
+   "middle": "J",
+   "bottom": "",
+   "discard": "J",
+   "v2": 17.961729
+  },
+  {
+   "drawn": "XQQ",
+   "prob": 12,
+   "top": "XQ",
+   "middle": "",
+   "bottom": "",
+   "discard": "Q",
+   "v2": 19.366443
+  },
+  {
+   "drawn": "XAA",
+   "prob": 12,
+   "top": "XA",
+   "middle": "",
+   "bottom": "",
+   "discard": "A",
+   "v2": 21.949049
+  },
+  {
+   "drawn": "22K",
+   "prob": 12,
+   "top": "",
+   "middle": "K",
+   "bottom": "2",
+   "discard": "2",
+   "v2": 18.548271
+  },
+  {
+   "drawn": "233",
+   "prob": 12,
+   "top": "",
+   "middle": "",
+   "bottom": "33",
+   "discard": "2",
+   "v2": 14.365936
+  },
+  {
+   "drawn": "255",
+   "prob": 12,
+   "top": "",
+   "middle": "",
+   "bottom": "55",
+   "discard": "2",
+   "v2": 14.365934
+  },
+  {
+   "drawn": "266",
+   "prob": 12,
+   "top": "",
+   "middle": "",
+   "bottom": "66",
+   "discard": "2",
+   "v2": 14.360634
+  },
+  {
+   "drawn": "334",
+   "prob": 12,
+   "top": "",
+   "middle": "3",
+   "bottom": "4",
+   "discard": "3",
+   "v2": 14.769269
+  },
+  {
+   "drawn": "337",
+   "prob": 12,
+   "top": "",
+   "middle": "",
+   "bottom": "33",
+   "discard": "7",
+   "v2": 14.359368
+  },
+  {
+   "drawn": "338",
+   "prob": 12,
+   "top": "",
+   "middle": "",
+   "bottom": "33",
+   "discard": "8",
+   "v2": 14.352507
+  },
+  {
+   "drawn": "339",
+   "prob": 12,
+   "top": "",
+   "middle": "",
+   "bottom": "33",
+   "discard": "9",
+   "v2": 14.342606
+  },
+  {
+   "drawn": "33T",
+   "prob": 12,
+   "top": "",
+   "middle": "",
+   "bottom": "33",
+   "discard": "T",
+   "v2": 14.329285
+  },
+  {
+   "drawn": "33J",
+   "prob": 12,
+   "top": "",
+   "middle": "",
+   "bottom": "33",
+   "discard": "J",
+   "v2": 14.311497
+  },
+  {
+   "drawn": "33Q",
+   "prob": 12,
+   "top": "",
+   "middle": "",
+   "bottom": "33",
+   "discard": "Q",
+   "v2": 13.964122
+  },
+  {
+   "drawn": "33A",
+   "prob": 12,
+   "top": "",
+   "middle": "",
+   "bottom": "33",
+   "discard": "A",
+   "v2": 12.601049
+  },
+  {
+   "drawn": "44K",
+   "prob": 12,
+   "top": "",
+   "middle": "K",
+   "bottom": "4",
+   "discard": "4",
+   "v2": 28.36011
+  },
+  {
+   "drawn": "455",
+   "prob": 12,
+   "top": "",
+   "middle": "5",
+   "bottom": "4",
+   "discard": "5",
+   "v2": 14.768771
+  },
+  {
+   "drawn": "466",
+   "prob": 12,
+   "top": "",
+   "middle": "6",
+   "bottom": "4",
+   "discard": "6",
+   "v2": 14.764391
+  },
+  {
+   "drawn": "557",
+   "prob": 12,
+   "top": "",
+   "middle": "",
+   "bottom": "55",
+   "discard": "7",
+   "v2": 14.359358
+  },
+  {
+   "drawn": "558",
+   "prob": 12,
+   "top": "",
+   "middle": "",
+   "bottom": "55",
+   "discard": "8",
+   "v2": 14.352499
+  },
+  {
+   "drawn": "559",
+   "prob": 12,
+   "top": "",
+   "middle": "",
+   "bottom": "55",
+   "discard": "9",
+   "v2": 14.342597
+  },
+  {
+   "drawn": "55T",
+   "prob": 12,
+   "top": "",
+   "middle": "",
+   "bottom": "55",
+   "discard": "T",
+   "v2": 14.329276
+  },
+  {
+   "drawn": "55J",
+   "prob": 12,
+   "top": "",
+   "middle": "",
+   "bottom": "55",
+   "discard": "J",
+   "v2": 14.311488
+  },
+  {
+   "drawn": "55Q",
+   "prob": 12,
+   "top": "",
+   "middle": "",
+   "bottom": "55",
+   "discard": "Q",
+   "v2": 13.964115
+  },
+  {
+   "drawn": "55A",
+   "prob": 12,
+   "top": "",
+   "middle": "",
+   "bottom": "55",
+   "discard": "A",
+   "v2": 12.601042
+  },
+  {
+   "drawn": "667",
+   "prob": 12,
+   "top": "",
+   "middle": "",
+   "bottom": "66",
+   "discard": "7",
+   "v2": 14.354221
+  },
+  {
+   "drawn": "668",
+   "prob": 12,
+   "top": "",
+   "middle": "",
+   "bottom": "66",
+   "discard": "8",
+   "v2": 14.347272
+  },
+  {
+   "drawn": "669",
+   "prob": 12,
+   "top": "",
+   "middle": "",
+   "bottom": "66",
+   "discard": "9",
+   "v2": 14.337235
+  },
+  {
+   "drawn": "66T",
+   "prob": 12,
+   "top": "",
+   "middle": "",
+   "bottom": "66",
+   "discard": "T",
+   "v2": 14.323852
+  },
+  {
+   "drawn": "66J",
+   "prob": 12,
+   "top": "",
+   "middle": "",
+   "bottom": "66",
+   "discard": "J",
+   "v2": 14.306043
+  },
+  {
+   "drawn": "66Q",
+   "prob": 12,
+   "top": "",
+   "middle": "",
+   "bottom": "66",
+   "discard": "Q",
+   "v2": 13.958312
+  },
+  {
+   "drawn": "66A",
+   "prob": 12,
+   "top": "",
+   "middle": "",
+   "bottom": "66",
+   "discard": "A",
+   "v2": 12.595704
+  },
+  {
+   "drawn": "77K",
+   "prob": 12,
+   "top": "",
+   "middle": "K",
+   "bottom": "7",
+   "discard": "7",
+   "v2": 18.485159
+  },
+  {
+   "drawn": "88K",
+   "prob": 12,
+   "top": "",
+   "middle": "8K",
+   "bottom": "",
+   "discard": "8",
+   "v2": 12.081355
+  },
+  {
+   "drawn": "99K",
+   "prob": 12,
+   "top": "",
+   "middle": "9K",
+   "bottom": "",
+   "discard": "9",
+   "v2": 12.051576
+  },
+  {
+   "drawn": "TTK",
+   "prob": 12,
+   "top": "",
+   "middle": "TK",
+   "bottom": "",
+   "discard": "T",
+   "v2": 12.012026
+  },
+  {
+   "drawn": "JJK",
+   "prob": 12,
+   "top": "",
+   "middle": "JK",
+   "bottom": "",
+   "discard": "J",
+   "v2": 11.959483
+  },
+  {
+   "drawn": "QQK",
+   "prob": 12,
+   "top": "QQ",
+   "middle": "",
+   "bottom": "",
+   "discard": "K",
+   "v2": 14.82604
+  },
+  {
+   "drawn": "KAA",
+   "prob": 12,
+   "top": "AA",
+   "middle": "",
+   "bottom": "",
+   "discard": "K",
+   "v2": 21.821396
+  },
+  {
+   "drawn": "335",
+   "prob": 9,
+   "top": "",
+   "middle": "",
+   "bottom": "33",
+   "discard": "5",
+   "v2": 14.463671
+  },
+  {
+   "drawn": "336",
+   "prob": 9,
+   "top": "",
+   "middle": "",
+   "bottom": "33",
+   "discard": "6",
+   "v2": 14.460947
+  },
+  {
+   "drawn": "355",
+   "prob": 9,
+   "top": "",
+   "middle": "",
+   "bottom": "55",
+   "discard": "3",
+   "v2": 14.46367
+  },
+  {
+   "drawn": "366",
+   "prob": 9,
+   "top": "",
+   "middle": "",
+   "bottom": "66",
+   "discard": "3",
+   "v2": 14.458845
+  },
+  {
+   "drawn": "556",
+   "prob": 9,
+   "top": "",
+   "middle": "",
+   "bottom": "55",
+   "discard": "6",
+   "v2": 14.46094
+  },
+  {
+   "drawn": "566",
+   "prob": 9,
+   "top": "",
+   "middle": "",
+   "bottom": "66",
+   "discard": "5",
+   "v2": 14.458837
+  },
+  {
+   "drawn": "X33",
+   "prob": 6,
+   "top": "X",
+   "middle": "3",
+   "bottom": "",
+   "discard": "3",
+   "v2": 16.506655
+  },
+  {
+   "drawn": "X55",
+   "prob": 6,
+   "top": "X",
+   "middle": "5",
+   "bottom": "",
+   "discard": "5",
+   "v2": 16.505623
+  },
+  {
+   "drawn": "X66",
+   "prob": 6,
+   "top": "X",
+   "middle": "6",
+   "bottom": "",
+   "discard": "6",
+   "v2": 16.501915
+  },
+  {
+   "drawn": "33K",
+   "prob": 6,
+   "top": "",
+   "middle": "",
+   "bottom": "33",
+   "discard": "K",
+   "v2": 13.758732
+  },
+  {
+   "drawn": "55K",
+   "prob": 6,
+   "top": "",
+   "middle": "",
+   "bottom": "55",
+   "discard": "K",
+   "v2": 13.758729
+  },
+  {
+   "drawn": "66K",
+   "prob": 6,
+   "top": "",
+   "middle": "",
+   "bottom": "66",
+   "discard": "K",
+   "v2": 13.753114
+  },
+  {
+   "drawn": "XX2",
+   "prob": 4,
+   "top": "X",
+   "middle": "",
+   "bottom": "X",
+   "discard": "2",
+   "v2": 33.06095
+  },
+  {
+   "drawn": "XX4",
+   "prob": 4,
+   "top": "X",
+   "middle": "",
+   "bottom": "X",
+   "discard": "4",
+   "v2": 33.058551
+  },
+  {
+   "drawn": "XX7",
+   "prob": 4,
+   "top": "X",
+   "middle": "",
+   "bottom": "X",
+   "discard": "7",
+   "v2": 33.051565
+  },
+  {
+   "drawn": "XX8",
+   "prob": 4,
+   "top": "X",
+   "middle": "",
+   "bottom": "X",
+   "discard": "8",
+   "v2": 33.353701
+  },
+  {
+   "drawn": "XX9",
+   "prob": 4,
+   "top": "X",
+   "middle": "",
+   "bottom": "X",
+   "discard": "9",
+   "v2": 33.344441
+  },
+  {
+   "drawn": "XXT",
+   "prob": 4,
+   "top": "X",
+   "middle": "",
+   "bottom": "X",
+   "discard": "T",
+   "v2": 33.329973
+  },
+  {
+   "drawn": "XXJ",
+   "prob": 4,
+   "top": "X",
+   "middle": "",
+   "bottom": "X",
+   "discard": "J",
+   "v2": 33.313201
+  },
+  {
+   "drawn": "XXQ",
+   "prob": 4,
+   "top": "X",
+   "middle": "",
+   "bottom": "X",
+   "discard": "Q",
+   "v2": 32.769356
+  },
+  {
+   "drawn": "XXA",
+   "prob": 4,
+   "top": "X",
+   "middle": "",
+   "bottom": "X",
+   "discard": "A",
+   "v2": 31.445607
+  },
+  {
+   "drawn": "222",
+   "prob": 4,
+   "top": "",
+   "middle": "2",
+   "bottom": "2",
+   "discard": "2",
+   "v2": 8.622762
+  },
+  {
+   "drawn": "2KK",
+   "prob": 4,
+   "top": "KK",
+   "middle": "",
+   "bottom": "",
+   "discard": "2",
+   "v2": 22.032621
+  },
+  {
+   "drawn": "444",
+   "prob": 4,
+   "top": "",
+   "middle": "4",
+   "bottom": "4",
+   "discard": "4",
+   "v2": 14.769039
+  },
+  {
+   "drawn": "4KK",
+   "prob": 4,
+   "top": "",
+   "middle": "K",
+   "bottom": "4",
+   "discard": "K",
+   "v2": 28.408527
+  },
+  {
+   "drawn": "777",
+   "prob": 4,
+   "top": "",
+   "middle": "7",
+   "bottom": "7",
+   "discard": "7",
+   "v2": 8.588325
+  },
+  {
+   "drawn": "7KK",
+   "prob": 4,
+   "top": "KK",
+   "middle": "",
+   "bottom": "",
+   "discard": "7",
+   "v2": 22.032621
+  },
+  {
+   "drawn": "888",
+   "prob": 4,
+   "top": "88",
+   "middle": "",
+   "bottom": "",
+   "discard": "8",
+   "v2": 8.53906
+  },
+  {
+   "drawn": "8KK",
+   "prob": 4,
+   "top": "KK",
+   "middle": "",
+   "bottom": "",
+   "discard": "8",
+   "v2": 22.458758
+  },
+  {
+   "drawn": "999",
+   "prob": 4,
+   "top": "99",
+   "middle": "",
+   "bottom": "",
+   "discard": "9",
+   "v2": 9.213153
+  },
+  {
+   "drawn": "9KK",
+   "prob": 4,
+   "top": "KK",
+   "middle": "",
+   "bottom": "",
+   "discard": "9",
+   "v2": 22.458591
+  },
+  {
+   "drawn": "TTT",
+   "prob": 4,
+   "top": "TT",
+   "middle": "",
+   "bottom": "",
+   "discard": "T",
+   "v2": 9.899197
+  },
+  {
+   "drawn": "TKK",
+   "prob": 4,
+   "top": "KK",
+   "middle": "",
+   "bottom": "",
+   "discard": "T",
+   "v2": 22.458741
+  },
+  {
+   "drawn": "JJJ",
+   "prob": 4,
+   "top": "JJ",
+   "middle": "",
+   "bottom": "",
+   "discard": "J",
+   "v2": 10.586809
+  },
+  {
+   "drawn": "JKK",
+   "prob": 4,
+   "top": "KK",
+   "middle": "",
+   "bottom": "",
+   "discard": "J",
+   "v2": 22.45881
+  },
+  {
+   "drawn": "QQQ",
+   "prob": 4,
+   "top": "QQ",
+   "middle": "",
+   "bottom": "",
+   "discard": "Q",
+   "v2": 15.364872
+  },
+  {
+   "drawn": "QKK",
+   "prob": 4,
+   "top": "KK",
+   "middle": "",
+   "bottom": "",
+   "discard": "Q",
+   "v2": 22.45763
+  },
+  {
+   "drawn": "KKA",
+   "prob": 4,
+   "top": "KK",
+   "middle": "",
+   "bottom": "",
+   "discard": "A",
+   "v2": 22.325901
+  },
+  {
+   "drawn": "AAA",
+   "prob": 4,
+   "top": "AA",
+   "middle": "",
+   "bottom": "",
+   "discard": "A",
+   "v2": 24.179407
+  },
+  {
+   "drawn": "XX3",
+   "prob": 3,
+   "top": "X",
+   "middle": "",
+   "bottom": "X",
+   "discard": "3",
+   "v2": 33.535559
+  },
+  {
+   "drawn": "XX5",
+   "prob": 3,
+   "top": "X",
+   "middle": "",
+   "bottom": "X",
+   "discard": "5",
+   "v2": 33.534578
+  },
+  {
+   "drawn": "XX6",
+   "prob": 3,
+   "top": "X",
+   "middle": "",
+   "bottom": "X",
+   "discard": "6",
+   "v2": 33.532855
+  },
+  {
+   "drawn": "3KK",
+   "prob": 3,
+   "top": "KK",
+   "middle": "",
+   "bottom": "",
+   "discard": "3",
+   "v2": 21.592421
+  },
+  {
+   "drawn": "5KK",
+   "prob": 3,
+   "top": "KK",
+   "middle": "",
+   "bottom": "",
+   "discard": "5",
+   "v2": 21.592421
+  },
+  {
+   "drawn": "6KK",
+   "prob": 3,
+   "top": "KK",
+   "middle": "",
+   "bottom": "",
+   "discard": "6",
+   "v2": 21.592421
+  },
+  {
+   "drawn": "XXK",
+   "prob": 2,
+   "top": "X",
+   "middle": "",
+   "bottom": "X",
+   "discard": "K",
+   "v2": 29.560645
+  },
+  {
+   "drawn": "XKK",
+   "prob": 2,
+   "top": "X",
+   "middle": "K",
+   "bottom": "",
+   "discard": "K",
+   "v2": 32.788428
+  },
+  {
+   "drawn": "333",
+   "prob": 1,
+   "top": "",
+   "middle": "",
+   "bottom": "33",
+   "discard": "3",
+   "v2": 14.52255
+  },
+  {
+   "drawn": "555",
+   "prob": 1,
+   "top": "",
+   "middle": "",
+   "bottom": "55",
+   "discard": "5",
+   "v2": 14.52255
+  },
+  {
+   "drawn": "666",
+   "prob": 1,
+   "top": "",
+   "middle": "",
+   "bottom": "66",
+   "discard": "6",
+   "v2": 14.516758
+  }
+ ]
+}
