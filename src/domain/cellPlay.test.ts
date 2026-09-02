@@ -40,14 +40,23 @@ const AUDIT = process.env.CELL_PLAY_AUDIT === '1'
  */
 const KEEPK = Number(process.env.CELL_PLAY_KEEPK ?? 0)
 
-describe('cell play: M[KK] B[653] sequential (set CELL_PLAY_HANDS to run)', () => {
+/** 初手配置（env `CELL_PLAY_START`、例 "T:KdKh|M:6d|B:5h3h"。省略時は M[KK] B[653]）。 */
+function startBoard(): Board {
+  const spec = process.env.CELL_PLAY_START
+  if (!spec) return { top: [], middle: parseCards('Kd Kh'), bottom: parseCards('6d 5h 3h') }
+  const board: Board = { top: [], middle: [], bottom: [] }
+  for (const part of spec.split('|')) {
+    const [row, cards] = part.split(':')
+    const key = row === 'T' ? 'top' : row === 'M' ? 'middle' : 'bottom'
+    if (cards) board[key] = parseCards(cards.match(/.{2}/g)!.join(' '))
+  }
+  return board
+}
+
+describe('cell play: sequential from a fixed 1st-street placement (set CELL_PLAY_HANDS)', () => {
   it.skipIf(HANDS <= 0)(`play streets with futureModel=${MODEL}`, () => {
-    const start: Board = {
-      top: [],
-      middle: parseCards('Kd Kh'),
-      bottom: parseCards('6d 5h 3h'),
-    }
-    const placed = [...start.middle, ...start.bottom]
+    const start: Board = startBoard()
+    const placed = [...start.top, ...start.middle, ...start.bottom]
     const rng = mulberry32(SEED)
     const deck = remainingDeck(placed, true)
 
@@ -120,8 +129,12 @@ describe('cell play: M[KK] B[653] sequential (set CELL_PLAY_HANDS to run)', () =
     const totalEntries = entries[14] + entries[15] + entries[16] + entries[17]
     const flSum = (t: Readonly<Record<number, number>>) =>
       [14, 15, 16, 17].reduce((a, n) => a + entries[n] * (t[n] ?? 0), 0)
+    const rowStr = (cs: readonly Card[]) => cs.map((c) => `${c.rank}`).join(',')
     console.log(
-      `[${MODEL} ${ITERS}iters${MODEL === 'rollout' ? ` rinner=${RINNER}` : ''} seed=${SEED}${FOUL_W !== undefined ? ` foulW=${FOUL_W}` : ''}${KEEPK > 0 ? ` keepK=${KEEPK}` : ''}${EXACT2 ? ' exact-street2+' : EXACT ? ' exact-endgame' : ''}]`,
+      `[${MODEL} ${ITERS}iters${MODEL === 'rollout' ? ` rinner=${RINNER}` : ''} seed=${SEED}${FOUL_W !== undefined ? ` foulW=${FOUL_W}` : ''}${KEEPK > 0 ? ` keepK=${KEEPK}` : ''}${EXACT2 ? ' exact-st34+' : EXACT ? ' exact-endgame' : ''} start=T[${rowStr(start.top)}]M[${rowStr(start.middle)}]B[${rowStr(start.bottom)}]]`,
+    )
+    console.log(
+      `スコア平均(ロイヤリティ+FL価値-9×ファウル) ${((roySum + flSum(DEFAULT_FL_VALUES_JOKER) - 9 * fouls) / HANDS).toFixed(3)}`,
     )
     console.log(
       `通算成績 ハンド数 ${HANDS} / FL突入率 ${pct(totalEntries)}% / ファウル率 ${pct(fouls)}%`,
