@@ -2084,10 +2084,10 @@ function endgameNeed2Rank(
 
 /**
  * 'oneshot' の既定配布枚数。セル完全解 V1=15.1413 に対する較正値
- * （cellOneShot.test.ts、2026-09）。逐次プレー（12枚見て8枚置く）は
- * 「約8.3枚を一気に見て置く」のと等価。
+ * （cellOneShot.test.ts、20,000サンプル、2026-09）。逐次プレー（12枚見て8枚置く）は
+ * 「約8.79枚を一気に見て置く」のと等価（N=8: 9.81 / N=9: 16.54 を線形補間）。
  */
-export const ONESHOT_N_DEFAULT = 8.28
+export const ONESHOT_N_DEFAULT = 8.79
 
 // 第3ストリート厳密評価の共有エバリュエータ（ワーカー内でセッションを跨いで温まる）。
 // variant/flValues/foulWeight の組ごとに1つ保持する。
