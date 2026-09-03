@@ -23,12 +23,6 @@ const messages = {
   modeFL: { ja: 'FL', en: 'FL' },
   reset: { ja: 'リセット', en: 'Reset' },
   undo: { ja: '戻す', en: 'Undo' },
-  precision: { ja: '精度', en: 'Precision' },
-  precisionFast: { ja: '速い', en: 'Fast' },
-  precisionStandard: { ja: '標準', en: 'Standard' },
-  precisionHigh: { ja: '高精度', en: 'High' },
-  precisionUltra: { ja: '最高', en: 'Ultra' },
-  precisionDeep: { ja: '解析（厳密・数分）', en: 'Deep (exact, minutes)' },
   confirmReset: {
     ja: '盤面をすべてリセットします。よろしいですか？',
     en: 'Reset the entire board?',

@@ -38,7 +38,6 @@ import {
 } from './worker/solverClient'
 import {
   type DrillStats,
-  type Precision,
   type VsPlayerStats,
   type VsPosStats,
   type VsStats,
@@ -102,32 +101,15 @@ interface Snapshot {
   assign: Record<number, RowKey>
 }
 
-/** 精度設定ごとのモンテカルロ反復数。Worker プールで並列実行される前提の値。 */
-const PRECISION_ITERS: Record<Precision, { initial: number; street: number; ev: number }> = {
-  fast: { initial: 40, street: 60, ev: 150 },
-  standard: { initial: 100, street: 130, ev: 400 },
-  high: { initial: 280, street: 350, ev: 1200 },
-  ultra: { initial: 700, street: 900, ev: 3000 },
-  // 解析（2026-09 刷新）: 初手 = oneshot サロゲート（一括配布 N* 枚の最適配置、
-  // セル完全解で較正）を全候補直当て。ストリート = policy512 + 第3St 2段厳密 +
-  // 第4St 全列挙厳密。旧 rollout 構成（1〜2時間級）は実測で policy 系に劣後し廃止。
-  deep: { initial: 2000, street: 512, ev: 3000 },
-}
-
-/** 精度「解析」の初手は oneshot サロゲート（一括配布 N* 枚、セル完全解で較正）で評価する。 */
-function initialModelFor(precision: Precision): 'oneshot' | undefined {
-  return precision === 'deep' ? 'oneshot' : undefined
-}
-
-/** 解析は第4ストリートを次ドロー全列挙の厳密期待値で採点（第5ストリートの厳密化は全精度で常時オン）。 */
-function endgameExactFor(precision: Precision): boolean | undefined {
-  return precision === 'deep' ? true : undefined
-}
-
-/** 解析は第3ストリートも2段厳密（フラッシュ不能盤面はスケルトン高速パス）で採点する。 */
-function endgameNeed4For(precision: Precision): boolean | undefined {
-  return precision === 'deep' ? true : undefined
-}
+/**
+ * 推奨手の計算設定は「解析」一本（2026-09 ユーザー指定でモード撤廃、以後これを磨き込む）:
+ * 初手 = oneshot サロゲート（一括配布 N*枚・セル完全解で較正）で全232候補を粗ランク →
+ * 上位10候補を逐次再ランク（第2St=policy、第3St=V3厳密、第4-5St=厳密期待値）。
+ * ストリート = policy512 + 第3St 2段厳密 + 第4St 全列挙厳密（第5Stは常時決定論厳密）。
+ */
+const DEEP_ITERS = { initial: 2000, street: 512, ev: 3000 }
+/** 対戦モードの相手（ソルバー）は応答速度優先の軽量設定（推奨手の品質とは別物）。 */
+const VILLAIN_ITERS = { initial: 100, street: 130 }
 
 /** 対戦モードの完了ラウンド数（0 = 未配置, 1 = 初手済, 2..5 = 各ストリート済）。 */
 function roundOf(count: number): number {
@@ -148,7 +130,6 @@ export default function App() {
   const [players, setPlayersState] = useState<2 | 3>(boot.settings.players ?? 2)
   const [mode, setModeState] = useState<Mode>(boot.settings.mode ?? 'play')
   const [useJokers, setUseJokersState] = useState(boot.settings.useJokers ?? false)
-  const [precision, setPrecision] = useState<Precision>(boot.settings.precision ?? 'standard')
 
   const [hero, setHero] = useState<PB>(boot.game?.hero ?? emptyBoard)
   const [heroDiscards, setHeroDiscards] = useState<Card[]>(boot.game?.heroDiscards ?? [])
@@ -280,8 +261,8 @@ export default function App() {
 
   // ---- 永続化（設定・進行中の盤面）----
   useEffect(() => {
-    saveSettings({ lang, variantId, players, mode, useJokers, precision })
-  }, [lang, variantId, players, mode, useJokers, precision])
+    saveSettings({ lang, variantId, players, mode, useJokers })
+  }, [lang, variantId, players, mode, useJokers])
 
   useEffect(() => {
     saveGame({
@@ -611,7 +592,6 @@ export default function App() {
     if (heroCount > 0 && openSlots < 2) return
 
     setSuggBusy(true)
-    const iters = PRECISION_ITERS[precision]
     const task =
       heroCount === 0
         ? suggestInitialParallel(
@@ -620,8 +600,8 @@ export default function App() {
               dead,
               variantId,
               jokers: useJokers,
-              iters: iters.initial,
-              futureModel: initialModelFor(precision),
+              iters: DEEP_ITERS.initial,
+              futureModel: 'oneshot',
             },
             setSuggProgress,
           )
@@ -632,9 +612,9 @@ export default function App() {
               dead,
               variantId,
               jokers: useJokers,
-              iters: iters.street,
-              endgameExact: endgameExactFor(precision),
-              endgameNeed4: endgameNeed4For(precision),
+              iters: DEEP_ITERS.street,
+              endgameExact: true,
+              endgameNeed4: true,
             },
             setSuggProgress,
           )
@@ -653,7 +633,7 @@ export default function App() {
         }
       })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, heroCodes, poolCodes, deadCodes, variantId, useJokers, precision])
+  }, [mode, heroCodes, poolCodes, deadCodes, variantId, useJokers])
 
   // 盤面・設定が変わったら EV はリセット
   useEffect(() => {
@@ -662,7 +642,7 @@ export default function App() {
     evTask.current = null
     setEvBusy(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [heroCodes, deadCodes, variantId, players, mode, useJokers, precision])
+  }, [heroCodes, deadCodes, variantId, players, mode, useJokers])
 
   const estimateEv = useCallback(() => {
     evTask.current?.cancel()
@@ -674,7 +654,7 @@ export default function App() {
       variantId,
       jokers: useJokers,
       opponents: players - 1,
-      iters: PRECISION_ITERS[precision].ev,
+      iters: DEEP_ITERS.ev,
     })
     evTask.current = task
     task.promise
@@ -688,7 +668,7 @@ export default function App() {
         setEvBusy(false)
         if (!(err instanceof CanceledError)) setEv(null)
       })
-  }, [hero, dead, variantId, players, useJokers, precision])
+  }, [hero, dead, variantId, players, useJokers])
 
   const solveFL = useCallback(() => {
     flTask.current?.cancel()
@@ -912,14 +892,13 @@ export default function App() {
     const villainBoard = villains[0]
     const heroVisible = vsHeroFL > 0 ? [] : boardCards(hero)
     const deadForVillain = [...heroVisible, ...vsVillainDiscards]
-    const iters = PRECISION_ITERS[precision]
     const task =
       boardCount(villainBoard) === 0
         ? suggestInitialParallel(
-            { cards: hand, dead: deadForVillain, variantId, jokers: useJokers, iters: iters.initial },
+            { cards: hand, dead: deadForVillain, variantId, jokers: useJokers, iters: VILLAIN_ITERS.initial },
           )
         : suggestStreetParallel(
-            { board: villainBoard, drawn: hand, dead: deadForVillain, variantId, jokers: useJokers, iters: iters.street },
+            { board: villainBoard, drawn: hand, dead: deadForVillain, variantId, jokers: useJokers, iters: VILLAIN_ITERS.street },
           )
     vsTask.current = task
     task.promise
@@ -1133,16 +1112,6 @@ export default function App() {
           >
             <option value={2}>{t(lang, 'playersHU')}</option>
             <option value={3}>{t(lang, 'players3')}</option>
-          </select>
-        </label>
-        <label className="ctrl-select">
-          {t(lang, 'precision')}
-          <select value={precision} onChange={(e) => setPrecision(e.target.value as Precision)}>
-            <option value="fast">{t(lang, 'precisionFast')}</option>
-            <option value="standard">{t(lang, 'precisionStandard')}</option>
-            <option value="high">{t(lang, 'precisionHigh')}</option>
-            <option value="ultra">{t(lang, 'precisionUltra')}</option>
-            <option value="deep">{t(lang, 'precisionDeep')}</option>
           </select>
         </label>
         <div className="mode-toggle" role="group">
