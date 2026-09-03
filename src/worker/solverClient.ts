@@ -248,7 +248,7 @@ const TOP_N = 5
 const REFINE_TOP_K = 10
 /** oneshot 粗ランク後に逐次再ランクへ回す候補数と、その反復数。 */
 const SEQ_REFINE_K = 10
-const SEQ_REFINE_ITERS = 96
+const SEQ_REFINE_ITERS = 160
 
 // ---- 公開タスク ----------------------------------------------------------------
 
