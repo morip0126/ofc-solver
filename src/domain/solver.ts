@@ -988,7 +988,7 @@ export interface RankOptions {
   endgameCardSpace?: boolean
 }
 
-export type FutureModel = 'combined' | 'policy' | 'rollout' | 'oneshot' | 'hindsight' | 'streets' | 'exact'
+export type FutureModel = 'combined' | 'policy' | 'rollout' | 'oneshot' | 'seqrefine' | 'hindsight' | 'streets' | 'exact'
 
 /**
  * 部分盤面の価値を、楽観的補完（残りは最適に置ける前提）のモンテカルロで推定する。
@@ -1688,6 +1688,9 @@ export function evaluateInitialChunk(
   const out = indices.map((index, i) => {
     onProgress?.(i, indices.length)
     const rng = seed !== undefined ? candidateRng(seed, index) : rest.rng
+    if (rest.futureModel === 'seqrefine') {
+      return { index, ...evaluateInitialSequential(boards[index], dead, variant, { ...rest, rng }) }
+    }
     return { index, ...evaluateBoard(boards[index], dead, variant, { ...rest, rng }) }
   })
   onProgress?.(indices.length, indices.length)
@@ -2103,6 +2106,108 @@ function getSharedNeed4Evaluator(
     sharedNeed4.set(key, ev)
   }
   return ev
+}
+
+/**
+ * 初手候補の逐次再ランク評価（'seqrefine'）: 一括配布サロゲート（oneshot）が持つ
+ * 「早期コミット不要」の勝負手バイアス（T[KK]検証で+7〜9点の過大評価を実測、2026-09）を
+ * 排除するため、実プレーの形で見積もる:
+ *   第2St = 軽量policy採点の argmax でコミット、第3St = V3厳密（2段厳密）の argmax で
+ *   コミット、第4・5St = V3 の厳密期待値に畳み込み。
+ * V3 が使えない盤面（フラッシュ可能）は policy 評価にフォールバックする。
+ */
+export function evaluateInitialSequential(
+  board: Board,
+  dead: readonly Card[],
+  variant: Variant,
+  options: RankOptions = {},
+): BoardMetric {
+  const iters = options.iters ?? 120
+  const rng = options.rng ?? Math.random
+  const jokers = options.jokers ?? false
+  const innerIters = options.rolloutInner ?? 16
+  const placed = boardCards(board)
+  if (placed.length !== 5) return evaluateBoard(board, dead, variant, options)
+  const deck = remainingDeck([...placed, ...dead], jokers)
+  const ev = getSharedNeed4Evaluator(variant, {
+    jokers,
+    foulWeight: options.foulWeight,
+    flValues: options.flValues,
+  })
+
+  let n = 0
+  let roySum = 0
+  let flvSum = 0
+  let foulSum = 0
+  let scoreSum = 0
+  const flBreak = [0, 0, 0, 0]
+  const pickBy = (
+    current: Board,
+    drawn: readonly Card[],
+    deadNow: readonly Card[],
+    exact: boolean,
+  ): { board: Board; discarded: Card } => {
+    const cands = generateStreetBoards(current, drawn)
+    let best = cands[0]
+    let bestS = Number.NEGATIVE_INFINITY
+    for (const c of cands) {
+      const d2 = [...deadNow, c.discarded]
+      const sc =
+        exact && rankEndgameApplicable(c.board)
+          ? ev.score(c.board, d2)
+          : evaluateBoard(c.board, d2, variant, {
+              ...options,
+              futureModel: 'policy',
+              iters: innerIters,
+              rng,
+            }).score
+      if (sc > bestS) {
+        bestS = sc
+        best = c
+      }
+    }
+    return best
+  }
+
+  for (let i = 0; i < iters; i++) {
+    shuffle(deck, rng)
+    const dead2: Card[] = [...dead]
+    const p2 = pickBy(board, deck.slice(0, 3), dead2, false)
+    dead2.push(p2.discarded)
+    const p3 = pickBy(p2.board, deck.slice(3, 6), dead2, true)
+    dead2.push(p3.discarded)
+    n++
+    const m = rankEndgameApplicable(p3.board)
+      ? ev.metric(p3.board, dead2)
+      : evaluateBoard(p3.board, dead2, variant, {
+          ...options,
+          futureModel: 'policy',
+          iters: Math.max(32, innerIters * 2),
+          rng,
+        })
+    roySum += m.expRoyalty
+    flvSum += m.flEV
+    foulSum += m.foulProb
+    scoreSum += m.score
+    for (let f = 0; f < 4; f++) flBreak[f] += m.flBreakdown[14 + f] ?? 0
+  }
+  const flBreakdown: Record<number, number> = {}
+  let flProb = 0
+  for (let f = 0; f < 4; f++) {
+    if (flBreak[f] > 0) {
+      flBreakdown[14 + f] = flBreak[f] / n
+      flProb += flBreak[f] / n
+    }
+  }
+  return {
+    expRoyalty: roySum / n,
+    flProb,
+    flEV: flvSum / n,
+    foulProb: foulSum / n,
+    flBreakdown,
+    score: scoreSum / n,
+    scoreVar: 0,
+  }
 }
 
 /**

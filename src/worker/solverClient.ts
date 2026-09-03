@@ -246,6 +246,9 @@ function chunkResults(responses: WorkerResponse[]) {
 
 const TOP_N = 5
 const REFINE_TOP_K = 10
+/** oneshot 粗ランク後に逐次再ランクへ回す候補数と、その反復数。 */
+const SEQ_REFINE_K = 10
+const SEQ_REFINE_ITERS = 96
 
 // ---- 公開タスク ----------------------------------------------------------------
 
@@ -307,19 +310,39 @@ export function suggestInitialParallel(
 
   const run = async (): Promise<SuggestionDTO[]> => {
     if (futureModel === 'oneshot') {
-      // 解析（oneshot）: 粗選別なしで全候補を一括配布サロゲートで直当て。
-      // 候補ごと独立シードの決定論的 PRNG なので分割不変。
-      const specs = splitIndices(boards.length, solverPool.size).map((indices) => ({
+      // 解析（2段構え）: ① oneshot（一括配布サロゲート）で全候補を粗ランク →
+      // ② 上位 SEQ_REFINE_K 候補だけ 'seqrefine'（逐次再ランク: 第2St=軽量policy、
+      // 第3St=V3厳密、第4-5St=厳密期待値）で採点し直す。oneshot は早期コミット不要の
+      // 勝負手バイアスを持つため（T[KK]検証で+7〜9点、2026-09）、最終順位は逐次側で決める。
+      const coarseSpecs = splitIndices(boards.length, solverPool.size).map((indices) => ({
         units: indices.length,
         req: chunkReq(indices, iters, seed, futureModel),
       }))
-      const task = runChunks(specs, (d, t) => onProgress?.(t > 0 ? d / t : 0))
+      const coarseFrac = 0.55
+      let task = runChunks(coarseSpecs, (d, t) => onProgress?.((t > 0 ? d / t : 0) * coarseFrac))
       inner = task
-      const metrics = chunkResults(await task.promise)
+      const coarse = chunkResults(await task.promise)
       if (canceled) throw new CanceledError()
-      metrics.sort((a, b) => b.score - a.score)
+      coarse.sort((a, b) => b.score - a.score)
+
+      const refIdx = coarse.slice(0, SEQ_REFINE_K).map((m) => m.index)
+      const refineSpecs = splitIndices(refIdx.length, solverPool.size).map((slice) => ({
+        units: slice.length,
+        req: chunkReq(slice.map((i) => refIdx[i]), SEQ_REFINE_ITERS, seed + 1, 'seqrefine'),
+      }))
+      task = runChunks(refineSpecs, (d, t) =>
+        onProgress?.(coarseFrac + (t > 0 ? d / t : 0) * (1 - coarseFrac)),
+      )
+      inner = task
+      const refined = chunkResults(await task.promise)
+      if (canceled) throw new CanceledError()
+      refined.sort((a, b) => b.score - a.score)
       onProgress?.(1)
-      return metrics.slice(0, TOP_N).map((m) => toSuggestionDTO(boards[m.index], undefined, m))
+      const refinedIds = new Set(refined.map((m) => m.index))
+      const rest = coarse.filter((m) => !refinedIds.has(m.index))
+      return [...refined, ...rest]
+        .slice(0, TOP_N)
+        .map((m) => toSuggestionDTO(boards[m.index], undefined, m))
     }
     if (futureModel === 'rollout') {
       // 解析: 全候補を rollout のレーシング（逐次淘汰）で採点。同じ物差しで全候補を
