@@ -47,6 +47,24 @@ describe('evaluateInitialChunk', () => {
   })
 })
 
+describe('evaluateInitialChunk (oneshot)', () => {
+  it('oneshot モデルでも分割不変（seed 固定）', () => {
+    const cards = parseCards('Kd Kh 6d 5h 3h')
+    const dead: never[] = []
+    const variant = VARIANTS.ultimate
+    const all = Array.from({ length: 24 }, (_, i) => i)
+    const opts = { iters: 40, seed: 77, jokers: true, futureModel: 'oneshot' as const }
+    const whole = evaluateInitialChunk(cards, dead, variant, all, opts)
+    const mid = 11
+    const split = [
+      ...evaluateInitialChunk(cards, dead, variant, all.slice(0, mid), opts),
+      ...evaluateInitialChunk(cards, dead, variant, all.slice(mid), opts),
+    ]
+    expect(split.map((m) => m.score)).toEqual(whole.map((m) => m.score))
+    expect(split.map((m) => m.flProb)).toEqual(whole.map((m) => m.flProb))
+  })
+})
+
 describe('evaluateStreetChunk', () => {
   it('チャンク分割しても全体一括評価と一致する（seed 固定）', () => {
     const board = {

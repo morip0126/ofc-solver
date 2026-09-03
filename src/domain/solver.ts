@@ -14,7 +14,7 @@
 // ホットパスは fastEval.ts の 24bit パックキーで動く（アロケーション回避・整数比較）。
 // 正しさは solver.test.ts の参照実装（combinations + evaluateArrangement）とのクロスチェックで担保。
 
-import { type Card, isJoker, remainingDeck, without } from './cards'
+import { type Card, JOKER_CARDS, type Rank, SUITS, isJoker, remainingDeck, without } from './cards'
 import { combinations, mulberry32, shuffle } from './combinatorics'
 import {
   achievableKeys,
@@ -350,6 +350,17 @@ export const UNCORRECTED_FL_VALUES_JOKER: Readonly<Record<number, number>> = {
   15: 36.8,
   16: 65.8,
   17: 126.1,
+}
+
+/**
+ * 同上の52枚デッキ版。実測 S_FL / S_N / pStay から V = (S_FL − S_N)/(1 − pStay) で導出
+ * （E_N 補正なし。S_N=−8.6、pStay 52枚実測 {10.5%, 19.5%, 34.7%, 54.8%}）。
+ */
+export const UNCORRECTED_FL_VALUES: Readonly<Record<number, number>> = {
+  14: 14.3,
+  15: 21.7,
+  16: 33.1,
+  17: 60.3,
 }
 
 /**
@@ -964,9 +975,20 @@ export interface RankOptions {
    * 参考ソルバーのプレイヤー像（トリップスFL重視・高ファウル）の再現用。
    */
   aggressiveTopCommit?: boolean
+  /**
+   * 'oneshot' モデルの一括配布枚数（小数部は混合比: 8.3 → 8枚70% / 9枚30%）。
+   * 逐次プレーとの等価枚数はセル完全解に対する較正で決める（cellOneShot.test.ts）。
+   * 既定は ONESHOT_N_DEFAULT。
+   */
+  oneshotN?: number
+  /**
+   * 終盤厳密（need=2）でランク空間高速パスを無効化してカード空間の全列挙を強制する
+   * （クロスチェックテスト用。通常は rankEndgameApplicable な盤面で自動的に高速パスを使う）。
+   */
+  endgameCardSpace?: boolean
 }
 
-export type FutureModel = 'combined' | 'policy' | 'rollout' | 'hindsight' | 'streets' | 'exact'
+export type FutureModel = 'combined' | 'policy' | 'rollout' | 'oneshot' | 'seqrefine' | 'hindsight' | 'streets' | 'exact'
 
 /**
  * 部分盤面の価値を、楽観的補完（残りは最適に置ける前提）のモンテカルロで推定する。
@@ -986,6 +1008,7 @@ export function evaluateBoard(
     jokers = false,
     futureModel = 'combined',
     aggressiveTopCommit = false,
+    oneshotN = ONESHOT_N_DEFAULT,
   } = options
   const foulWeight =
     options.foulWeight ??
@@ -1411,7 +1434,14 @@ export function evaluateBoard(
       }
       continue
     }
-    if (futureModel === 'rollout' && need >= 2 && deck.length >= need + Math.floor(need / 2)) {
+    if (futureModel === 'oneshot' && deck.length >= need) {
+      // one-shot サロゲート: N*枚（小数部は反復ごとに混合）を一気に見て一括最適配置。
+      // 逐次プレーの価値と等価になる N* はセル完全解で較正（cellOneShot.test.ts）。
+      const base = Math.floor(oneshotN)
+      const frac = oneshotN - base
+      const nDeal = Math.min(deck.length, Math.max(need, base + (frac > 0 && rng() < frac ? 1 : 0)))
+      best = bestCompletionChoose(board, deck.slice(0, nDeal), variant, flValues)
+    } else if (futureModel === 'rollout' && need >= 2 && deck.length >= need + Math.floor(need / 2)) {
       best = rolloutBest()
     } else if (futureModel === 'policy' && streets > 0 && deck.length >= seen) {
       best = policyCommitBest()
@@ -1554,6 +1584,18 @@ export interface SuggestOptions extends RankOptions {
   refineTopK?: number
   /** 進捗コールバック（0..1）。Worker からの進捗通知用。 */
   onProgress?: (done: number, total: number) => void
+  /**
+   * 第4ストリート候補（残り2マス）を「第5Stドロー全列挙 × 厳密応答」の期待値で採点する
+   * （MCノイズなし）。第5ストリート候補（13枚完成）の決定論的厳密評価は常時オン
+   * （純粋な上位互換・高速のため、このフラグに依らない）。
+   */
+  endgameExact?: boolean
+  /**
+   * 第3ストリート候補（残り4マス）も2段厳密期待値で採点する（フラッシュ不能盤面は
+   * 共有スケルトンエバリュエータ、それ以外は evaluateBoardEndgameNeed4 経由で
+   * カード空間/従来評価へフォールバック）。
+   */
+  endgameNeed4?: boolean
 }
 
 /**
@@ -1569,8 +1611,8 @@ export function suggestInitial5(
   const { iters = 120, refineTopK = 10, onProgress, ...rest } = options
   const boards = generateInitialBoards(cards)
 
-  if (rest.futureModel === 'rollout') {
-    // 解析: 粗選別なしで全候補を rollout 直当て（粗選別モデルの後知恵バイアスで
+  if (rest.futureModel === 'rollout' || rest.futureModel === 'oneshot') {
+    // 解析: 粗選別なしで全候補を直当て（粗選別モデルの後知恵バイアスで
     // 真の上位が精評価前に落ちるのを防ぐ。ユーザー合意の設計、2026-08）。
     const all = boards.map((board, i) => {
       onProgress?.(i, boards.length)
@@ -1617,6 +1659,10 @@ export interface ChunkOptions extends RankOptions {
   /** 候補ごとの決定論的 PRNG のベースシード。省略時は rng（または Math.random）を共有。 */
   seed?: number
   onProgress?: (done: number, total: number) => void
+  /** 第4ストリート候補（残り2マス）の全列挙厳密評価（SuggestOptions.endgameExact と同義）。 */
+  endgameExact?: boolean
+  /** 第3ストリート候補（残り4マス）の2段厳密評価（SuggestOptions.endgameNeed4 と同義）。 */
+  endgameNeed4?: boolean
 }
 
 /**
@@ -1642,6 +1688,9 @@ export function evaluateInitialChunk(
   const out = indices.map((index, i) => {
     onProgress?.(i, indices.length)
     const rng = seed !== undefined ? candidateRng(seed, index) : rest.rng
+    if (rest.futureModel === 'seqrefine') {
+      return { index, ...evaluateInitialSequential(boards[index], dead, variant, { ...rest, rng }) }
+    }
     return { index, ...evaluateBoard(boards[index], dead, variant, { ...rest, rng }) }
   })
   onProgress?.(indices.length, indices.length)
@@ -1657,16 +1706,1135 @@ export function evaluateStreetChunk(
   indices: readonly number[],
   options: ChunkOptions = {},
 ): CandidateMetric[] {
-  const { seed, onProgress, ...rest } = options
+  const { seed, onProgress, endgameExact, endgameNeed4, ...rest } = options
   const candidates = generateStreetBoards(current, drawn)
   const out = indices.map((index, i) => {
     onProgress?.(i, indices.length)
     const { board, discarded } = candidates[index]
+    // suggestStreet と同じ終盤厳密の振り分け（決定論的なのでチャンク分割不変性は保たれる）。
+    const cap = remainingCap(board)
+    const need = cap.top + cap.middle + cap.bottom
+    if (need === 0 || (endgameExact && need <= 2)) {
+      return { index, ...evaluateBoardEndgame(board, [...dead, discarded], variant, rest) }
+    }
+    if (endgameNeed4 && need === 4) {
+      const m = rankEndgameApplicable(board)
+        ? getSharedNeed4Evaluator(variant, rest).metric(board, [...dead, discarded])
+        : evaluateBoardEndgameNeed4(board, [...dead, discarded], variant, rest)
+      return { index, ...m }
+    }
     const rng = seed !== undefined ? candidateRng(seed, index) : rest.rng
     return { index, ...evaluateBoard(board, [...dead, discarded], variant, { ...rest, rng }) }
   })
   onProgress?.(indices.length, indices.length)
   return out
+}
+
+/**
+ * 終盤の厳密評価。残りマス数（need）に応じて:
+ *   need 0（最終ストリート候補 = 13枚完成）: 決定論的評価（ファウル/ロイヤリティ/FLが確定）
+ *   need 2（第3ストリート候補）: 未知カードからの次3枚ドローを全列挙し、各ドローに対する
+ *     「最終ストリート厳密応答（3通りの捨て × 空き2マスへの配置）」の最大値を平均する期待値
+ *   それ以外: evaluateBoard へフォールバック
+ * ジョーカーは新ルール（ファウルしない置換の中で最強 = key5AtMost/key3AtMost の demote）。
+ */
+export function evaluateBoardEndgame(
+  board: Board,
+  dead: readonly Card[],
+  variant: Variant,
+  options: RankOptions = {},
+): BoardMetric {
+  const jokers = options.jokers ?? false
+  const foulWeight = options.foulWeight ?? DEFAULT_FOUL_WEIGHT
+  const flValues =
+    options.flValues ??
+    (variant.restayKeepsCount
+      ? jokers
+        ? DEFAULT_FL_VALUES_JOKER
+        : DEFAULT_FL_VALUES
+      : jokers
+        ? PROGRESSIVE_FL_VALUES_JOKER
+        : PROGRESSIVE_FL_VALUES)
+  const cap = remainingCap(board)
+  const need = cap.top + cap.middle + cap.bottom
+
+  if (need === 0) {
+    const ev = evaluateArrangement(board as Arrangement)
+    if (ev.fouled) {
+      return { expRoyalty: 0, flProb: 0, flEV: 0, foulProb: 1, flBreakdown: {}, score: -foulWeight, scoreVar: 0 }
+    }
+    const roys = royaltiesTotal(ev)
+    const fl = fantasylandCards(ev, variant)
+    const flv = fl > 0 ? (flValues[fl] ?? 0) : 0
+    return {
+      expRoyalty: roys,
+      flProb: fl > 0 ? 1 : 0,
+      flEV: flv,
+      foulProb: 0,
+      flBreakdown: fl > 0 ? { [fl]: 1 } : {},
+      score: roys + flv,
+      scoreVar: 0,
+    }
+  }
+  if (need !== 2) return evaluateBoard(board, dead, variant, options)
+
+  // ---- need === 2: 次ドロー全列挙 × 最終ストリート厳密応答 ----
+  const seen = [...board.top, ...board.middle, ...board.bottom, ...dead]
+  const deck = remainingDeck(seen, jokers)
+  if (deck.length < 3) return evaluateBoard(board, dead, variant, options)
+
+  // フラッシュが構造的に不可能な盤面では、ドローをランク多重集合クラスに畳んだ
+  // 高速パス（結果はカード空間の全列挙と厳密一致、solverEndgameRank.test.ts で担保）。
+  if (!options.endgameCardSpace && rankEndgameApplicable(board)) {
+    return endgameNeed2Rank(board, deck, variant, flValues, foulWeight)
+  }
+
+  // 空き2マスの行構成（同一行2マス or 異なる2行に1マスずつ）
+  const rowA: RowKey = cap.top > 0 ? 'top' : cap.middle > 0 ? 'middle' : 'bottom'
+  const capA = cap[rowA]
+  let rowB: RowKey | null = null
+  if (capA === 1) {
+    rowB = rowA === 'top' ? (cap.middle > 0 ? 'middle' : 'bottom') : 'bottom'
+  }
+
+  const topBuf: Card[] = board.top.slice()
+  topBuf.length = 3
+  const midBuf: Card[] = board.middle.slice()
+  midBuf.length = 5
+  const botBuf: Card[] = board.bottom.slice()
+  botBuf.length = 5
+  const bufOf = (r: RowKey) => (r === 'top' ? topBuf : r === 'middle' ? midBuf : botBuf)
+  const lenOf = (r: RowKey) =>
+    r === 'top' ? board.top.length : r === 'middle' ? board.middle.length : board.bottom.length
+
+  const topFixed = cap.top === 0 ? key3(topBuf) : 0
+  const midFixed = cap.middle === 0 ? key5(midBuf) : 0
+  const botFixed = cap.bottom === 0 ? key5(botBuf) : 0
+
+  // 1つの配置（空き2マスへの具体的なカード割当）の評価。ファウル（demote 不能）なら null。
+  const finishScore = (): { score: number; roys: number; fl: number } | null => {
+    const topKey = cap.top === 0 ? topFixed : key3(topBuf)
+    const midKey0 = cap.middle === 0 ? midFixed : key5(midBuf)
+    const botKey = cap.bottom === 0 ? botFixed : key5(botBuf)
+    let mKey = midKey0
+    let tKey = topKey
+    if (botKey < mKey) {
+      mKey = hasJoker(midBuf, 5) ? key5AtMost(midBuf, botKey) : -1
+      if (mKey < 0) return null
+    }
+    if (mKey < tKey) {
+      tKey = hasJoker(topBuf, 3) ? key3AtMost(topBuf, mKey) : -1
+      if (tKey < 0) return null
+    }
+    const roys = royaltyBottomKey(botKey) + royaltyMiddleKey(mKey) + royaltyTopKey(tKey)
+    const fl = flEntryFromTopKey(tKey, variant)
+    return { score: roys + (fl > 0 ? (flValues[fl] ?? 0) : 0), roys, fl }
+  }
+
+  let n = 0
+  let scoreSum = 0
+  let scoreSum2 = 0
+  let roySum = 0
+  let flCount = 0
+  let flvSum = 0
+  let foulCount = 0
+  const flCounts: Record<number, number> = {}
+
+  forEachIndexCombo(deck.length, 3, (idx) => {
+    const c0 = deck[idx[0]]
+    const c1 = deck[idx[1]]
+    const c2 = deck[idx[2]]
+    let best: { score: number; roys: number; fl: number } | null = null
+    for (let d = 0; d < 3; d++) {
+      const ka = d === 0 ? c1 : c0
+      const kb = d === 2 ? c1 : c2
+      if (capA === 2) {
+        const buf = bufOf(rowA)
+        const base = lenOf(rowA)
+        buf[base] = ka
+        buf[base + 1] = kb
+        const r = finishScore()
+        if (r && (!best || r.score > best.score)) best = r
+      } else {
+        const bufA = bufOf(rowA)
+        const bufB = bufOf(rowB!)
+        const baseA = lenOf(rowA)
+        const baseB = lenOf(rowB!)
+        bufA[baseA] = ka
+        bufB[baseB] = kb
+        let r = finishScore()
+        if (r && (!best || r.score > best.score)) best = r
+        bufA[baseA] = kb
+        bufB[baseB] = ka
+        r = finishScore()
+        if (r && (!best || r.score > best.score)) best = r
+      }
+    }
+    n++
+    if (!best) {
+      foulCount++
+      scoreSum += -foulWeight
+      scoreSum2 += foulWeight * foulWeight
+    } else {
+      roySum += best.roys
+      if (best.fl > 0) {
+        flCount++
+        flvSum += flValues[best.fl] ?? 0
+        flCounts[best.fl] = (flCounts[best.fl] ?? 0) + 1
+      }
+      scoreSum += best.score
+      scoreSum2 += best.score * best.score
+    }
+  })
+
+  const expRoyalty = roySum / n
+  const flProb = flCount / n
+  const flEV = flvSum / n
+  const foulProb = foulCount / n
+  const flBreakdown: Record<number, number> = {}
+  for (const [k, v] of Object.entries(flCounts)) flBreakdown[Number(k)] = v / n
+  const mean = scoreSum / n
+  return {
+    expRoyalty,
+    flProb,
+    flEV,
+    foulProb,
+    flBreakdown,
+    // 目的関数は他モデルと同型（期待ロイヤリティ + FL期待価値 − foulWeight×ファウル率）
+    score: expRoyalty + flEV - foulWeight * foulProb,
+    scoreVar: Math.max(0, scoreSum2 / n - mean * mean),
+  }
+}
+
+/**
+ * need=2 の厳密評価を「ランク空間」（スート消去）で等価に畳めるかの判定。
+ * ミドル/ボトムそれぞれで「確定札の最大同スート枚数 + 段内ジョーカー + 空きマス ≤ 4」なら、
+ * 以後どんなスートの札（ジョーカーの置換を含む）が入ってもフラッシュ系が構造的に不可能で、
+ * 評価はランクのみで決まる（トップは3枚役なので常にスート非依存）。
+ */
+export function rankEndgameApplicable(board: Board): boolean {
+  const cap = remainingCap(board)
+  for (const row of ['middle', 'bottom'] as const) {
+    const suitCnt: Partial<Record<string, number>> = {}
+    let rowJokers = 0
+    for (const c of board[row]) {
+      if (c.rank === 0) rowJokers++
+      else suitCnt[c.suit] = (suitCnt[c.suit] ?? 0) + 1
+    }
+    let maxSuit = 0
+    for (const v of Object.values(suitCnt)) if ((v ?? 0) > maxSuit) maxSuit = v ?? 0
+    if (maxSuit + rowJokers + cap[row] > 4) return false
+  }
+  return true
+}
+
+function comb3(n: number, k: number): number {
+  if (k > n) return 0
+  if (k <= 0) return 1
+  if (k === 1) return n
+  if (k === 2) return (n * (n - 1)) / 2
+  return (n * (n - 1) * (n - 2)) / 6
+}
+
+/**
+ * need=2 のランク空間高速パス: 次の3枚ドローをランク多重集合クラス（≤ 約560通り）に畳み、
+ * 超幾何重み（クラス内の組合せ数）つきで「最終ストリート厳密応答」の期待値を取る。
+ * rankEndgameApplicable が真の盤面ではカード空間の C(deck,3) 全列挙と厳密に一致する
+ * （代表カードのスートは評価に影響しないため任意でよい）。カード空間版が参照実装。
+ */
+function endgameNeed2Rank(
+  board: Board,
+  deck: readonly Card[],
+  variant: Variant,
+  flValues: Readonly<Record<number, number>>,
+  foulWeight: number,
+): BoardMetric {
+  const cap = remainingCap(board)
+  const rowA: RowKey = cap.top > 0 ? 'top' : cap.middle > 0 ? 'middle' : 'bottom'
+  const capA = cap[rowA]
+  let rowB: RowKey | null = null
+  if (capA === 1) {
+    rowB = rowA === 'top' ? (cap.middle > 0 ? 'middle' : 'bottom') : 'bottom'
+  }
+
+  const topBuf: Card[] = board.top.slice()
+  topBuf.length = 3
+  const midBuf: Card[] = board.middle.slice()
+  midBuf.length = 5
+  const botBuf: Card[] = board.bottom.slice()
+  botBuf.length = 5
+  const bufOf = (r: RowKey) => (r === 'top' ? topBuf : r === 'middle' ? midBuf : botBuf)
+  const lenOf = (r: RowKey) =>
+    r === 'top' ? board.top.length : r === 'middle' ? board.middle.length : board.bottom.length
+
+  const topFixed = cap.top === 0 ? key3(topBuf) : 0
+  const midFixed = cap.middle === 0 ? key5(midBuf) : 0
+  const botFixed = cap.bottom === 0 ? key5(botBuf) : 0
+
+  const finishScore = (): { score: number; roys: number; fl: number } | null => {
+    const topKey = cap.top === 0 ? topFixed : key3(topBuf)
+    const midKey0 = cap.middle === 0 ? midFixed : key5(midBuf)
+    const botKey = cap.bottom === 0 ? botFixed : key5(botBuf)
+    let mKey = midKey0
+    let tKey = topKey
+    if (botKey < mKey) {
+      mKey = hasJoker(midBuf, 5) ? key5AtMost(midBuf, botKey) : -1
+      if (mKey < 0) return null
+    }
+    if (mKey < tKey) {
+      tKey = hasJoker(topBuf, 3) ? key3AtMost(topBuf, mKey) : -1
+      if (tKey < 0) return null
+    }
+    const roys = royaltyBottomKey(botKey) + royaltyMiddleKey(mKey) + royaltyTopKey(tKey)
+    const fl = flEntryFromTopKey(tKey, variant)
+    return { score: roys + (fl > 0 ? (flValues[fl] ?? 0) : 0), roys, fl }
+  }
+
+  // 残り山のランク度数（0 = ジョーカー）と、クラス代表カード（スートは評価に無関係）。
+  const cnt = new Array<number>(15).fill(0)
+  for (const c of deck) cnt[c.rank]++
+  const ranks: number[] = []
+  for (let r = 0; r < 15; r++) if (cnt[r] > 0) ranks.push(r)
+  const rep = (r: number, i: number): Card =>
+    r === 0 ? JOKER_CARDS[Math.min(i, 1)] : { rank: r as Rank, suit: SUITS[i] }
+
+  let n = 0
+  let scoreSum = 0
+  let scoreSum2 = 0
+  let roySum = 0
+  let flCount = 0
+  let flvSum = 0
+  let foulCount = 0
+  const flCounts: Record<number, number> = {}
+
+  for (let i = 0; i < ranks.length; i++) {
+    for (let j = i; j < ranks.length; j++) {
+      for (let k = j; k < ranks.length; k++) {
+        const r0 = ranks[i]
+        const r1 = ranks[j]
+        const r2 = ranks[k]
+        let w: number
+        if (r0 === r1 && r1 === r2) w = comb3(cnt[r0], 3)
+        else if (r0 === r1) w = comb3(cnt[r0], 2) * cnt[r2]
+        else if (r1 === r2) w = cnt[r0] * comb3(cnt[r1], 2)
+        else w = cnt[r0] * cnt[r1] * cnt[r2]
+        if (w === 0) continue
+        const c0 = rep(r0, 0)
+        const c1 = rep(r1, 1)
+        const c2 = rep(r2, 2)
+        let best: { score: number; roys: number; fl: number } | null = null
+        for (let d = 0; d < 3; d++) {
+          const ka = d === 0 ? c1 : c0
+          const kb = d === 2 ? c1 : c2
+          if (capA === 2) {
+            const buf = bufOf(rowA)
+            const base = lenOf(rowA)
+            buf[base] = ka
+            buf[base + 1] = kb
+            const r = finishScore()
+            if (r && (!best || r.score > best.score)) best = r
+          } else {
+            const bufA = bufOf(rowA)
+            const bufB = bufOf(rowB!)
+            const baseA = lenOf(rowA)
+            const baseB = lenOf(rowB!)
+            bufA[baseA] = ka
+            bufB[baseB] = kb
+            let r = finishScore()
+            if (r && (!best || r.score > best.score)) best = r
+            bufA[baseA] = kb
+            bufB[baseB] = ka
+            r = finishScore()
+            if (r && (!best || r.score > best.score)) best = r
+          }
+        }
+        n += w
+        if (!best) {
+          foulCount += w
+          scoreSum += -foulWeight * w
+          scoreSum2 += foulWeight * foulWeight * w
+        } else {
+          roySum += best.roys * w
+          if (best.fl > 0) {
+            flCount += w
+            flvSum += (flValues[best.fl] ?? 0) * w
+            flCounts[best.fl] = (flCounts[best.fl] ?? 0) + w
+          }
+          scoreSum += best.score * w
+          scoreSum2 += best.score * best.score * w
+        }
+      }
+    }
+  }
+
+  const expRoyalty = roySum / n
+  const flProb = flCount / n
+  const flEV = flvSum / n
+  const foulProb = foulCount / n
+  const flBreakdown: Record<number, number> = {}
+  for (const [k, v] of Object.entries(flCounts)) flBreakdown[Number(k)] = v / n
+  const mean = scoreSum / n
+  return {
+    expRoyalty,
+    flProb,
+    flEV,
+    foulProb,
+    flBreakdown,
+    score: expRoyalty + flEV - foulWeight * foulProb,
+    scoreVar: Math.max(0, scoreSum2 / n - mean * mean),
+  }
+}
+
+/**
+ * 'oneshot' の既定配布枚数。セル完全解 V1=15.1413 に対する較正値
+ * （cellOneShot.test.ts、20,000サンプル、2026-09）。逐次プレー（12枚見て8枚置く）は
+ * 「約8.79枚を一気に見て置く」のと等価（N=8: 9.81 / N=9: 16.54 を線形補間）。
+ */
+export const ONESHOT_N_DEFAULT = 8.79
+
+// 第3ストリート厳密評価の共有エバリュエータ（ワーカー内でセッションを跨いで温まる）。
+// variant/flValues/foulWeight の組ごとに1つ保持する。
+const sharedNeed4 = new Map<string, ReturnType<typeof createNeed4Evaluator>>()
+function getSharedNeed4Evaluator(
+  variant: Variant,
+  options: RankOptions,
+): ReturnType<typeof createNeed4Evaluator> {
+  const key = `${variant.id}|${options.jokers ? 1 : 0}|${options.foulWeight ?? ''}|${options.flValues ? JSON.stringify(options.flValues) : ''}`
+  let ev = sharedNeed4.get(key)
+  if (!ev) {
+    ev = createNeed4Evaluator(variant, options, { skeletons: 8000, gTables: 60000 })
+    sharedNeed4.set(key, ev)
+  }
+  return ev
+}
+
+/**
+ * 初手候補の逐次再ランク評価（'seqrefine'）: 一括配布サロゲート（oneshot）が持つ
+ * 「早期コミット不要」の勝負手バイアス（T[KK]検証で+7〜9点の過大評価を実測、2026-09）を
+ * 排除するため、実プレーの形で見積もる:
+ *   第2St = 軽量policy採点の argmax でコミット、第3St = V3厳密（2段厳密）の argmax で
+ *   コミット、第4・5St = V3 の厳密期待値に畳み込み。
+ * V3 が使えない盤面（フラッシュ可能）は policy 評価にフォールバックする。
+ */
+export function evaluateInitialSequential(
+  board: Board,
+  dead: readonly Card[],
+  variant: Variant,
+  options: RankOptions = {},
+): BoardMetric {
+  const iters = options.iters ?? 120
+  const rng = options.rng ?? Math.random
+  const jokers = options.jokers ?? false
+  const innerIters = options.rolloutInner ?? 16
+  const placed = boardCards(board)
+  if (placed.length !== 5) return evaluateBoard(board, dead, variant, options)
+  const deck = remainingDeck([...placed, ...dead], jokers)
+  const ev = getSharedNeed4Evaluator(variant, {
+    jokers,
+    foulWeight: options.foulWeight,
+    flValues: options.flValues,
+  })
+
+  let n = 0
+  let roySum = 0
+  let flvSum = 0
+  let foulSum = 0
+  let scoreSum = 0
+  const flBreak = [0, 0, 0, 0]
+  const pickBy = (
+    current: Board,
+    drawn: readonly Card[],
+    deadNow: readonly Card[],
+    exact: boolean,
+  ): { board: Board; discarded: Card } => {
+    const cands = generateStreetBoards(current, drawn)
+    let best = cands[0]
+    let bestS = Number.NEGATIVE_INFINITY
+    for (const c of cands) {
+      const d2 = [...deadNow, c.discarded]
+      const sc =
+        exact && rankEndgameApplicable(c.board)
+          ? ev.score(c.board, d2)
+          : evaluateBoard(c.board, d2, variant, {
+              ...options,
+              futureModel: 'policy',
+              iters: innerIters,
+              rng,
+            }).score
+      if (sc > bestS) {
+        bestS = sc
+        best = c
+      }
+    }
+    return best
+  }
+
+  for (let i = 0; i < iters; i++) {
+    shuffle(deck, rng)
+    const dead2: Card[] = [...dead]
+    const p2 = pickBy(board, deck.slice(0, 3), dead2, false)
+    dead2.push(p2.discarded)
+    const p3 = pickBy(p2.board, deck.slice(3, 6), dead2, true)
+    dead2.push(p3.discarded)
+    n++
+    const m = rankEndgameApplicable(p3.board)
+      ? ev.metric(p3.board, dead2)
+      : evaluateBoard(p3.board, dead2, variant, {
+          ...options,
+          futureModel: 'policy',
+          iters: Math.max(32, innerIters * 2),
+          rng,
+        })
+    roySum += m.expRoyalty
+    flvSum += m.flEV
+    foulSum += m.foulProb
+    scoreSum += m.score
+    for (let f = 0; f < 4; f++) flBreak[f] += m.flBreakdown[14 + f] ?? 0
+  }
+  const flBreakdown: Record<number, number> = {}
+  let flProb = 0
+  for (let f = 0; f < 4; f++) {
+    if (flBreak[f] > 0) {
+      flBreakdown[14 + f] = flBreak[f] / n
+      flProb += flBreak[f] / n
+    }
+  }
+  return {
+    expRoyalty: roySum / n,
+    flProb,
+    flEV: flvSum / n,
+    foulProb: foulSum / n,
+    flBreakdown,
+    score: scoreSum / n,
+    scoreVar: 0,
+  }
+}
+
+/**
+ * セル・ソルバー用の need=4 スコア専用エバリュエータ（M3 フェーズA）。
+ * 「盤面の形（各段のランク多重集合）が同じ盤面は、捨て札・山に依らず子候補集合と
+ * g テーブルが同一」という性質を使い、盤面形ごとの候補スケルトン
+ * （ドロークラス → 子 g テーブル参照の配列）をキャッシュする。同型盤面の2回目以降は
+ * テーブル構築ゼロで、重み付き内積のみで厳密スコアが出る。
+ * スコアは evaluateBoardEndgameNeed4().score と厳密一致（solverEndgameNeed4.test.ts）。
+ */
+export function createNeed4Evaluator(
+  variant: Variant,
+  options: RankOptions = {},
+  caps: { skeletons?: number; gTables?: number } = {},
+): {
+  score(board: Board, dead: readonly Card[]): number
+  metric(board: Board, dead: readonly Card[]): BoardMetric
+  stats(): { skeletons: number; gTables: number }
+} {
+  const jokers = options.jokers ?? false
+  const foulWeight = options.foulWeight ?? DEFAULT_FOUL_WEIGHT
+  const flValues =
+    options.flValues ??
+    (variant.restayKeepsCount
+      ? jokers
+        ? DEFAULT_FL_VALUES_JOKER
+        : DEFAULT_FL_VALUES
+      : jokers
+        ? PROGRESSIVE_FL_VALUES_JOKER
+        : PROGRESSIVE_FL_VALUES)
+  const skCap = caps.skeletons ?? 30_000
+  const gCap = caps.gTables ?? 120_000
+  const nCls = CLASSES.length
+  const gCache = new Map<string, GTab>()
+  // スケルトン: CLASSES と同順。クラス ci の子 g テーブル配列（物理的に不可能なクラスは空）。
+  type Skeleton = GTab[][]
+  const skCache = new Map<string, Skeleton>()
+  const wcls = new Float64Array(nCls)
+  const rows: RowKey[] = ['top', 'middle', 'bottom']
+
+  const buildSkeleton = (board: Board): Skeleton => {
+    const cap = remainingCap(board)
+    const boardJokers =
+      board.top.filter((c) => c.rank === 0).length +
+      board.middle.filter((c) => c.rank === 0).length +
+      board.bottom.filter((c) => c.rank === 0).length
+    const sk: Skeleton = new Array(nCls)
+    for (let ci = 0; ci < nCls; ci++) {
+      const { a, b, c } = CLASSES[ci]
+      const clsJokers = (a === 0 ? 1 : 0) + (b === 0 ? 1 : 0) + (c === 0 ? 1 : 0)
+      if (clsJokers + boardJokers > 2) {
+        sk[ci] = []
+        continue
+      }
+      const pairs: [number, number][] = [
+        [a, b],
+        [a, c],
+        [b, c],
+      ]
+      const seenChild = new Set<string>()
+      const cands: GTab[] = []
+      for (const [p, q] of pairs) {
+        const ka: Card = p === 0 ? JOKER_CARDS[0] : { rank: p as Rank, suit: SUITS[1] }
+        const kb: Card =
+          q === 0 ? JOKER_CARDS[p === 0 ? 1 : 0] : { rank: q as Rank, suit: SUITS[2] }
+        for (const rowX of rows) {
+          for (const rowY of rows) {
+            const needX = rowX === rowY ? 2 : 1
+            if (cap[rowX] < needX) continue
+            if (rowX !== rowY && cap[rowY] < 1) continue
+            const b11: Board = {
+              top: [...board.top],
+              middle: [...board.middle],
+              bottom: [...board.bottom],
+            }
+            b11[rowX].push(ka)
+            b11[rowY].push(kb)
+            const key = `${rankRowKey(b11.top)}|${rankRowKey(b11.middle)}|${rankRowKey(b11.bottom)}`
+            if (seenChild.has(key)) continue
+            seenChild.add(key)
+            let gtab = gCache.get(key)
+            if (!gtab) {
+              gtab = buildGFor(buildFTableFor(b11, variant, flValues), flValues, foulWeight)
+              gCache.set(key, gtab)
+            }
+            cands.push(gtab)
+          }
+        }
+      }
+      sk[ci] = cands
+    }
+    return sk
+  }
+
+  const cnt9 = new Array<number>(15).fill(0)
+  const cnt11 = new Array<number>(15).fill(0)
+
+  /** 共通部: スケルトン取得と cnt9 構築。 */
+  const prepare = (board: Board, dead: readonly Card[]): Skeleton => {
+    const seen = [...board.top, ...board.middle, ...board.bottom, ...dead]
+    const deck = remainingDeck(seen, jokers)
+    cnt9.fill(0)
+    for (const c of deck) cnt9[c.rank]++
+    const key9 = `${rankRowKey(board.top)}|${rankRowKey(board.middle)}|${rankRowKey(board.bottom)}`
+    let sk = skCache.get(key9)
+    if (!sk) {
+      if (skCache.size >= skCap || gCache.size >= gCap) {
+        skCache.clear()
+        gCache.clear()
+      }
+      sk = buildSkeleton(board)
+      skCache.set(key9, sk)
+    }
+    return sk
+  }
+
+  /**
+   * スコアに加えて成分（期待ロイヤリティ・FL内訳・ファウル率）も厳密集計する。
+   * evaluateBoardEndgameNeed4 と同一値（フェーズCの最適方策メトリクス用）。
+   */
+  const metric = (board: Board, dead: readonly Card[]): BoardMetric => {
+    const sk = prepare(board, dead)
+    let tot = 0
+    let scoreSum = 0
+    let scoreSum2 = 0
+    let roySum = 0
+    let flvSum = 0
+    let foulSum = 0
+    const flBreak = [0, 0, 0, 0]
+    for (let ci = 0; ci < nCls; ci++) {
+      const cands = sk[ci]
+      if (cands.length === 0) continue
+      const cls = CLASSES[ci]
+      const wD = classWeight(cls, cnt9)
+      if (wD === 0) continue
+      for (let r = 0; r < 15; r++) cnt11[r] = cnt9[r]
+      cnt11[cls.a]--
+      cnt11[cls.b]--
+      cnt11[cls.c]--
+      const nW = fillWeights(cnt11, wcls)
+      let bestG: GTab | null = null
+      let bestS = Number.NEGATIVE_INFINITY
+      for (const g of cands) {
+        let s = 0
+        const arr = g.scoreEff
+        for (let k = 0; k < nCls; k++) s += wcls[k] * arr[k]
+        if (s > bestS) {
+          bestS = s
+          bestG = g
+        }
+      }
+      const g = bestG!
+      // 選ばれた子の成分を wcls で集計
+      let rs = 0
+      let fs = 0
+      let fo = 0
+      const fb = [0, 0, 0, 0]
+      for (let k = 0; k < nCls; k++) {
+        const w = wcls[k]
+        if (w === 0) continue
+        if (g.foul[k]) {
+          fo += w
+          continue
+        }
+        rs += w * g.roys[k]
+        fs += w * g.flv[k]
+        const fl = g.fl[k]
+        if (fl > 0) fb[fl - 14] += w
+      }
+      const sc = bestS / nW
+      tot += wD
+      scoreSum += sc * wD
+      scoreSum2 += sc * sc * wD
+      roySum += (rs / nW) * wD
+      flvSum += (fs / nW) * wD
+      foulSum += (fo / nW) * wD
+      for (let i = 0; i < 4; i++) flBreak[i] += (fb[i] / nW) * wD
+    }
+    const flBreakdown: Record<number, number> = {}
+    let flProb = 0
+    for (let i = 0; i < 4; i++) {
+      if (flBreak[i] > 0) {
+        flBreakdown[14 + i] = flBreak[i] / tot
+        flProb += flBreak[i] / tot
+      }
+    }
+    const mean = scoreSum / tot
+    return {
+      expRoyalty: roySum / tot,
+      flProb,
+      flEV: flvSum / tot,
+      foulProb: foulSum / tot,
+      flBreakdown,
+      score: mean,
+      scoreVar: Math.max(0, scoreSum2 / tot - mean * mean),
+    }
+  }
+
+  const score = (board: Board, dead: readonly Card[]): number => {
+    const sk = prepare(board, dead)
+    let acc = 0
+    let tot = 0
+    for (let ci = 0; ci < nCls; ci++) {
+      const cands = sk[ci]
+      if (cands.length === 0) continue
+      const cls = CLASSES[ci]
+      const wD = classWeight(cls, cnt9)
+      if (wD === 0) continue
+      for (let r = 0; r < 15; r++) cnt11[r] = cnt9[r]
+      cnt11[cls.a]--
+      cnt11[cls.b]--
+      cnt11[cls.c]--
+      const nW = fillWeights(cnt11, wcls)
+      let best = Number.NEGATIVE_INFINITY
+      for (const g of cands) {
+        let s = 0
+        const arr = g.scoreEff
+        for (let k = 0; k < nCls; k++) s += wcls[k] * arr[k]
+        if (s > best) best = s
+      }
+      acc += (best / nW) * wD
+      tot += wD
+    }
+    return acc / tot
+  }
+
+  return { score, metric, stats: () => ({ skeletons: skCache.size, gTables: gCache.size }) }
+}
+
+/** ランク度数ベクトル（0=ジョーカー, 2..14）から3枚ドローの多重集合クラスを列挙する。 */
+function forEachDrawClass3(
+  cnt: readonly number[],
+  cb: (r0: number, r1: number, r2: number, w: number) => void,
+): void {
+  const ranks: number[] = []
+  for (let r = 0; r < 15; r++) if (cnt[r] > 0) ranks.push(r)
+  for (let i = 0; i < ranks.length; i++) {
+    for (let j = i; j < ranks.length; j++) {
+      for (let k = j; k < ranks.length; k++) {
+        const r0 = ranks[i]
+        const r1 = ranks[j]
+        const r2 = ranks[k]
+        let w: number
+        if (r0 === r1 && r1 === r2) w = comb3(cnt[r0], 3)
+        else if (r0 === r1) w = comb3(cnt[r0], 2) * cnt[r2]
+        else if (r1 === r2) w = cnt[r0] * comb3(cnt[r1], 2)
+        else w = cnt[r0] * cnt[r1] * cnt[r2]
+        if (w > 0) cb(r0, r1, r2, w)
+      }
+    }
+  }
+}
+
+// ---- need=4 厳密評価の共有定義 -------------------------------------------------
+// クラス表: 最終ドロー3枚の多重集合クラス（全ランク空間で固定・重みは cnt から都度計算）
+type Cls = { a: number; b: number; c: number; pat: number }
+const CLASSES: Cls[] = (() => {
+  const out: Cls[] = []
+  const rankList: number[] = [0]
+  for (let r = 2; r <= 14; r++) rankList.push(r)
+  for (let i = 0; i < rankList.length; i++)
+    for (let j = i; j < rankList.length; j++)
+      for (let k = j; k < rankList.length; k++) {
+        const a = rankList[i]
+        const b = rankList[j]
+        const c = rankList[k]
+        if (a === 0 && c === 0) continue // ジョーカー3枚は存在しない
+        const pat = a === b && b === c ? 0 : a === b ? 1 : b === c ? 2 : 3
+        out.push({ a, b, c, pat })
+      }
+  return out
+})()
+// g テーブル: クラス位置 → そのドロークラスでの最終最適応答（f から前計算、山非依存）。
+// scoreEff はファウルクラスを −foulWeight に置換済み（重み0クラスとの積で NaN を出さず、
+// 密な内積 Σ w×scoreEff がそのまま厳密な V4 スコアになる）。foul はファウルマスク。
+type GTab = {
+  scoreEff: Float64Array
+  roys: Float64Array
+  flv: Float64Array
+  fl: Int8Array
+  foul: Uint8Array
+}
+
+type FEntry = { score: number; roys: number; fl: number } | null
+
+const rankRowKey = (cards: readonly Card[]): string =>
+  cards
+    .map((c) => c.rank)
+    .sort((a, b) => a - b)
+    .join()
+
+/** 11枚盤面（残り2マス）の f テーブルを構築（山非依存・スートは結果に影響しない前提）。 */
+function buildFTableFor(
+  b11: Board,
+  variant: Variant,
+  flValues: Readonly<Record<number, number>>,
+): FEntry[] {
+  const cap11 = remainingCap(b11)
+  const b11Jokers =
+    b11.top.filter((c) => c.rank === 0).length +
+    b11.middle.filter((c) => c.rank === 0).length +
+    b11.bottom.filter((c) => c.rank === 0).length
+  const rowA: RowKey = cap11.top > 0 ? 'top' : cap11.middle > 0 ? 'middle' : 'bottom'
+  const capA = cap11[rowA]
+  let rowB: RowKey | null = null
+  if (capA === 1) {
+    rowB = rowA === 'top' ? (cap11.middle > 0 ? 'middle' : 'bottom') : 'bottom'
+  }
+  const topBuf: Card[] = b11.top.slice()
+  topBuf.length = 3
+  const midBuf: Card[] = b11.middle.slice()
+  midBuf.length = 5
+  const botBuf: Card[] = b11.bottom.slice()
+  botBuf.length = 5
+  const bufOf = (r: RowKey) => (r === 'top' ? topBuf : r === 'middle' ? midBuf : botBuf)
+  const lenOf = (r: RowKey) =>
+    r === 'top' ? b11.top.length : r === 'middle' ? b11.middle.length : b11.bottom.length
+  const topFixed = cap11.top === 0 ? key3(topBuf) : 0
+  const midFixed = cap11.middle === 0 ? key5(midBuf) : 0
+  const botFixed = cap11.bottom === 0 ? key5(botBuf) : 0
+  const finishScore = (): FEntry => {
+    const topKey = cap11.top === 0 ? topFixed : key3(topBuf)
+    const midKey0 = cap11.middle === 0 ? midFixed : key5(midBuf)
+    const botKey = cap11.bottom === 0 ? botFixed : key5(botBuf)
+    let mKey = midKey0
+    let tKey = topKey
+    if (botKey < mKey) {
+      mKey = hasJoker(midBuf, 5) ? key5AtMost(midBuf, botKey) : -1
+      if (mKey < 0) return null
+    }
+    if (mKey < tKey) {
+      tKey = hasJoker(topBuf, 3) ? key3AtMost(topBuf, mKey) : -1
+      if (tKey < 0) return null
+    }
+    const roys = royaltyBottomKey(botKey) + royaltyMiddleKey(mKey) + royaltyTopKey(tKey)
+    const fl = flEntryFromTopKey(tKey, variant)
+    return { score: roys + (fl > 0 ? (flValues[fl] ?? 0) : 0), roys, fl }
+  }
+  const table: FEntry[] = new Array(15 * 15).fill(null)
+  for (let r1 = 0; r1 < 15; r1++) {
+    if (r1 === 1) continue
+    for (let r2 = r1; r2 < 15; r2++) {
+      if (r2 === 1) continue
+      // デッキ全体でジョーカーは2枚なので、盤面のワイルドと合わせて2枚を超えるペアは
+      // 物理的に不可能（重み0で参照もされない）。1段3ワイルドの評価例外を防ぐためスキップ。
+      if ((r1 === 0 ? 1 : 0) + (r2 === 0 ? 1 : 0) + b11Jokers > 2) continue
+      const ka: Card = r1 === 0 ? JOKER_CARDS[0] : { rank: r1 as Rank, suit: SUITS[3] }
+      const kb: Card =
+        r2 === 0 ? JOKER_CARDS[r1 === 0 ? 1 : 0] : { rank: r2 as Rank, suit: SUITS[0] }
+      let best: FEntry
+      if (capA === 2) {
+        const buf = bufOf(rowA)
+        const base = lenOf(rowA)
+        buf[base] = ka
+        buf[base + 1] = kb
+        best = finishScore()
+      } else {
+        const bufA = bufOf(rowA)
+        const bufB = bufOf(rowB!)
+        const baseA = lenOf(rowA)
+        const baseB = lenOf(rowB!)
+        bufA[baseA] = ka
+        bufB[baseB] = kb
+        best = finishScore()
+        bufA[baseA] = kb
+        bufB[baseB] = ka
+        const alt = finishScore()
+        if (alt && (best === null || alt.score > best.score)) best = alt
+      }
+      table[r1 * 15 + r2] = best
+    }
+  }
+  return table
+}
+
+/** f テーブルから g テーブル（クラス→最終最適応答）を前計算する。 */
+function buildGFor(
+  ftab: FEntry[],
+  flValues: Readonly<Record<number, number>>,
+  foulWeight: number,
+): GTab {
+  const nCls = CLASSES.length
+  const g: GTab = {
+    scoreEff: new Float64Array(nCls),
+    roys: new Float64Array(nCls),
+    flv: new Float64Array(nCls),
+    fl: new Int8Array(nCls),
+    foul: new Uint8Array(nCls),
+  }
+  for (let ci = 0; ci < nCls; ci++) {
+    const { a, b, c } = CLASSES[ci]
+    const e0 = ftab[a * 15 + b]
+    const e1 = ftab[a * 15 + c]
+    const e2 = ftab[b * 15 + c]
+    let best: FEntry = e0
+    if (e1 && (!best || e1.score > best.score)) best = e1
+    if (e2 && (!best || e2.score > best.score)) best = e2
+    if (!best) {
+      g.scoreEff[ci] = -foulWeight
+      g.foul[ci] = 1
+    } else {
+      g.scoreEff[ci] = best.score
+      g.roys[ci] = best.roys
+      g.fl[ci] = best.fl
+      g.flv[ci] = best.fl > 0 ? (flValues[best.fl] ?? 0) : 0
+    }
+  }
+  return g
+}
+
+/** 1クラスの超幾何重み（cnt 中の組合せ数）。 */
+function classWeight(cls: Cls, cnt: readonly number[]): number {
+  const ca = cnt[cls.a]
+  if (ca === 0) return 0
+  if (cls.pat === 0) return ca >= 3 ? (ca * (ca - 1) * (ca - 2)) / 6 : 0
+  if (cls.pat === 1) {
+    const cc = cnt[cls.c]
+    return ca >= 2 && cc !== 0 ? ((ca * (ca - 1)) / 2) * cc : 0
+  }
+  if (cls.pat === 2) {
+    const cb = cnt[cls.b]
+    return cb >= 2 ? ca * ((cb * (cb - 1)) / 2) : 0
+  }
+  const cb = cnt[cls.b]
+  const cc = cnt[cls.c]
+  return cb !== 0 && cc !== 0 ? ca * cb * cc : 0
+}
+
+/** 全クラスの重みベクトルを埋めて総重量を返す。 */
+function fillWeights(cnt: readonly number[], wcls: Float64Array): number {
+  let n = 0
+  for (let ci = 0; ci < CLASSES.length; ci++) {
+    const w = classWeight(CLASSES[ci], cnt)
+    wcls[ci] = w
+    n += w
+  }
+  return n
+}
+
+/**
+ * need=4（第2ストリート決定後の盤面）のランク空間厳密評価（M2）。
+ *   V3 = E[次ドロー3枚クラス]( max[2枚配置×1枚捨て] V4(子盤面) )
+ *   V4 = E[最終ドロークラス]( max[残す2枚] f(11枚盤面, 2ランク) )
+ * f（最終ストリート応答テーブル）は11枚盤面ごとに1回だけ構築し（山非依存）、
+ * 山の違いは超幾何重みの掛け直しで吸収する。rankEndgameApplicable が真の盤面のみ。
+ * 参照実装（小さい山での全列挙クロスチェック）は solverEndgameNeed4.test.ts。
+ */
+export function evaluateBoardEndgameNeed4(
+  board: Board,
+  dead: readonly Card[],
+  variant: Variant,
+  options: RankOptions = {},
+  // g テーブル（11枚盤面キー・山非依存）の呼び出し横断キャッシュ。同一の variant/flValues
+  // で使い回すこと（セル・ソルバー用。サイズ管理は呼び出し側の責任）。
+  fgCacheShared?: Map<string, unknown>,
+): BoardMetric {
+  const jokers = options.jokers ?? false
+  const foulWeight = options.foulWeight ?? DEFAULT_FOUL_WEIGHT
+  const flValues =
+    options.flValues ??
+    (variant.restayKeepsCount
+      ? jokers
+        ? DEFAULT_FL_VALUES_JOKER
+        : DEFAULT_FL_VALUES
+      : jokers
+        ? PROGRESSIVE_FL_VALUES_JOKER
+        : PROGRESSIVE_FL_VALUES)
+  const cap = remainingCap(board)
+  const need = cap.top + cap.middle + cap.bottom
+  if (need !== 4 || !rankEndgameApplicable(board)) {
+    return evaluateBoard(board, dead, variant, options)
+  }
+  const seen = [...board.top, ...board.middle, ...board.bottom, ...dead]
+  const deck = remainingDeck(seen, jokers)
+  if (deck.length < 6) return evaluateBoard(board, dead, variant, options)
+
+  const cnt9 = new Array<number>(15).fill(0)
+  for (const c of deck) cnt9[c.rank]++
+
+  const fCache = (fgCacheShared ?? new Map()) as Map<string, GTab>
+
+  type ChildValue = {
+    score: number
+    roys: number
+    flv: number
+    foulP: number
+    flCounts: Record<number, number>
+  }
+
+  const nCls = CLASSES.length
+  // D ごとの超幾何重み（密ベクトル・使い回しのスクラッチ）。Σ w×scoreEff が厳密な V4 スコア。
+  const wcls = new Float64Array(nCls)
+  /** 密内積による V4 スコア（÷総重量前）。子の argmax 選定用。 */
+  const denseScore = (g: GTab): number => {
+    let s = 0
+    const arr = g.scoreEff
+    for (let ci = 0; ci < nCls; ci++) s += wcls[ci] * arr[ci]
+    return s
+  }
+  /** 選ばれた子の成分（ロイヤリティ・FL・ファウル率）を wcls で厳密集計する。 */
+  const v4Full = (g: GTab, n: number): ChildValue => {
+    let scoreSum = 0
+    let roySum = 0
+    let flvSum = 0
+    let foulSum = 0
+    const flCountArr = [0, 0, 0, 0]
+    for (let ci = 0; ci < nCls; ci++) {
+      const w = wcls[ci]
+      if (w === 0) continue
+      scoreSum += w * g.scoreEff[ci]
+      if (g.foul[ci]) {
+        foulSum += w
+        continue
+      }
+      roySum += w * g.roys[ci]
+      flvSum += w * g.flv[ci]
+      const fl = g.fl[ci]
+      if (fl > 0) flCountArr[fl - 14] += w
+    }
+    const out: ChildValue = {
+      score: scoreSum / n,
+      roys: roySum / n,
+      flv: flvSum / n,
+      foulP: foulSum / n,
+      flCounts: {},
+    }
+    for (let fl = 14; fl <= 17; fl++) {
+      if (flCountArr[fl - 14] > 0) out.flCounts[fl] = flCountArr[fl - 14] / n
+    }
+    return out
+  }
+
+  // ---- V3: 次ドロークラスごとに最良の(2枚配置×捨て)を選び、期待値へ畳む ----
+  let totalW = 0
+  let scoreSum = 0
+  let scoreSum2 = 0
+  let roySum = 0
+  let flvSum = 0
+  let foulSum = 0
+  const flBreak: Record<number, number> = {}
+  const rows: RowKey[] = ['top', 'middle', 'bottom']
+
+  forEachDrawClass3(cnt9, (a, b, c, wD) => {
+    const cnt11 = cnt9.slice()
+    cnt11[a]--
+    cnt11[b]--
+    cnt11[c]--
+    // 残すペア（捨て1枚）: (a,b), (a,c), (b,c) — 同値ペアは自然に同じ子キーに畳まれる
+    const pairs: [number, number][] = [
+      [a, b],
+      [a, c],
+      [b, c],
+    ]
+    // 子（2枚配置の11枚盤面）を集め、密内積スコアで argmax を選んでから
+    // その子だけ成分（ロイヤリティ・FL・ファウル率）を厳密集計する。
+    const nW = fillWeights(cnt11, wcls)
+    const seenChild = new Set<string>()
+    const cands: GTab[] = []
+    for (const [p, q] of pairs) {
+      const ka: Card = p === 0 ? JOKER_CARDS[0] : { rank: p as Rank, suit: SUITS[1] }
+      const kb: Card = q === 0 ? JOKER_CARDS[p === 0 ? 1 : 0] : { rank: q as Rank, suit: SUITS[2] }
+      for (const rowX of rows) {
+        for (const rowY of rows) {
+          const needX = rowX === rowY ? 2 : 1
+          if (cap[rowX] < needX) continue
+          if (rowX !== rowY && cap[rowY] < 1) continue
+          const b11: Board = {
+            top: [...board.top],
+            middle: [...board.middle],
+            bottom: [...board.bottom],
+          }
+          b11[rowX].push(ka)
+          b11[rowY].push(kb)
+          const key = `${rankRowKey(b11.top)}|${rankRowKey(b11.middle)}|${rankRowKey(b11.bottom)}`
+          if (seenChild.has(key)) continue
+          seenChild.add(key)
+          let gtab = fCache.get(key)
+          if (!gtab) {
+            gtab = buildGFor(buildFTableFor(b11, variant, flValues), flValues, foulWeight)
+            fCache.set(key, gtab)
+          }
+          cands.push(gtab)
+        }
+      }
+    }
+    let bestG: GTab | null = null
+    let bestS = Number.NEGATIVE_INFINITY
+    for (const gtab of cands) {
+      const s = denseScore(gtab)
+      if (s > bestS) {
+        bestS = s
+        bestG = gtab
+      }
+    }
+    // 空きが4マスあるので合法手は必ず存在する
+    const chosen = v4Full(bestG!, nW)
+    totalW += wD
+    scoreSum += chosen.score * wD
+    scoreSum2 += chosen.score * chosen.score * wD
+    roySum += chosen.roys * wD
+    flvSum += chosen.flv * wD
+    foulSum += chosen.foulP * wD
+    for (const [k, v] of Object.entries(chosen.flCounts)) {
+      flBreak[Number(k)] = (flBreak[Number(k)] ?? 0) + v * wD
+    }
+  })
+
+  const expRoyalty = roySum / totalW
+  const flEV = flvSum / totalW
+  const foulProb = foulSum / totalW
+  const flBreakdown: Record<number, number> = {}
+  let flProb = 0
+  for (const [k, v] of Object.entries(flBreak)) {
+    flBreakdown[Number(k)] = v / totalW
+    flProb += v / totalW
+  }
+  const mean = scoreSum / totalW
+  return {
+    expRoyalty,
+    flProb,
+    flEV,
+    foulProb,
+    flBreakdown,
+    score: expRoyalty + flEV - foulWeight * foulProb,
+    // 分散は「次ドロークラス条件付き期待値」のばらつき（終端まで展開した分散ではない）
+    scoreVar: Math.max(0, scoreSum2 / totalW - mean * mean),
+  }
 }
 
 /** ストリート手を評価し、スコア降順で返す。 */
@@ -1677,15 +2845,26 @@ export function suggestStreet(
   variant: Variant,
   options: SuggestOptions = {},
 ): BoardSuggestion[] {
-  const { onProgress, ...rest } = options
+  const { onProgress, endgameExact, endgameNeed4, ...rest } = options
   const candidates = generateStreetBoards(current, drawn)
   const suggestions = candidates.map(({ board, discarded }, i) => {
     onProgress?.(i, candidates.length)
+    // 終盤厳密: 最終ストリート（13枚完成）は常に決定論的評価、残り2マスは endgameExact 時のみ
+    // 全列挙、残り4マスは endgameNeed4 時のみ2段厳密（それ以外は従来評価）。
+    const cap = remainingCap(board)
+    const need = cap.top + cap.middle + cap.bottom
+    const useExact = need === 0 || (endgameExact && need <= 2)
     return {
       board,
       discarded,
       // 捨て札もデッキから除外する。
-      ...evaluateBoard(board, [...dead, discarded], variant, rest),
+      ...(useExact
+        ? evaluateBoardEndgame(board, [...dead, discarded], variant, rest)
+        : endgameNeed4 && need === 4
+          ? rankEndgameApplicable(board)
+            ? getSharedNeed4Evaluator(variant, rest).metric(board, [...dead, discarded])
+            : evaluateBoardEndgameNeed4(board, [...dead, discarded], variant, rest)
+          : evaluateBoard(board, [...dead, discarded], variant, rest)),
     }
   })
   suggestions.sort((a, b) => b.score - a.score)

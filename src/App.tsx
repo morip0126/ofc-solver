@@ -108,24 +108,25 @@ const PRECISION_ITERS: Record<Precision, { initial: number; street: number; ev: 
   standard: { initial: 100, street: 130, ev: 400 },
   high: { initial: 280, street: 350, ev: 1200 },
   ultra: { initial: 700, street: 900, ev: 3000 },
-  // 解析: 逐次最適プレイのロールアウト（rollout モデル、末端 policy）。iters はロールアウト本数。
-  // 初手は粗選別なしの全候補直当てなので1〜2時間級（KKハンド検証で合意した設定、2026-08）。
-  deep: { initial: 140, street: 140, ev: 3000 },
+  // 解析（2026-09 刷新）: 初手 = oneshot サロゲート（一括配布 N* 枚の最適配置、
+  // セル完全解で較正）を全候補直当て。ストリート = policy512 + 第3St 2段厳密 +
+  // 第4St 全列挙厳密。旧 rollout 構成（1〜2時間級）は実測で policy 系に劣後し廃止。
+  deep: { initial: 2000, street: 512, ev: 3000 },
 }
 
-/** 精度「解析」では固定方針なしの逐次最適ロールアウトで評価する。 */
-function futureModelFor(precision: Precision): 'rollout' | undefined {
-  return precision === 'deep' ? 'rollout' : undefined
+/** 精度「解析」の初手は oneshot サロゲート（一括配布 N* 枚、セル完全解で較正）で評価する。 */
+function initialModelFor(precision: Precision): 'oneshot' | undefined {
+  return precision === 'deep' ? 'oneshot' : undefined
 }
 
-/** 解析の rollout 内側モンテカルロ反復数（勉強用途・時間無制限の合意設計）。 */
-function rolloutInnerFor(precision: Precision): number | undefined {
-  return precision === 'deep' ? 24 : undefined
+/** 解析は第4ストリートを次ドロー全列挙の厳密期待値で採点（第5ストリートの厳密化は全精度で常時オン）。 */
+function endgameExactFor(precision: Precision): boolean | undefined {
+  return precision === 'deep' ? true : undefined
 }
 
-/** 解析の rollout 末端モデル。policy = 文脈つきチェイス方針（KKハンド検証で参考ソルバーと順位一致）。 */
-function rolloutLeafFor(precision: Precision): 'policy' | undefined {
-  return precision === 'deep' ? 'policy' : undefined
+/** 解析は第3ストリートも2段厳密（フラッシュ不能盤面はスケルトン高速パス）で採点する。 */
+function endgameNeed4For(precision: Precision): boolean | undefined {
+  return precision === 'deep' ? true : undefined
 }
 
 /** 対戦モードの完了ラウンド数（0 = 未配置, 1 = 初手済, 2..5 = 各ストリート済）。 */
@@ -620,9 +621,7 @@ export default function App() {
               variantId,
               jokers: useJokers,
               iters: iters.initial,
-              futureModel: futureModelFor(precision),
-              rolloutInner: rolloutInnerFor(precision),
-              rolloutLeaf: rolloutLeafFor(precision),
+              futureModel: initialModelFor(precision),
             },
             setSuggProgress,
           )
@@ -634,9 +633,8 @@ export default function App() {
               variantId,
               jokers: useJokers,
               iters: iters.street,
-              futureModel: futureModelFor(precision),
-              rolloutInner: rolloutInnerFor(precision),
-              rolloutLeaf: rolloutLeafFor(precision),
+              endgameExact: endgameExactFor(precision),
+              endgameNeed4: endgameNeed4For(precision),
             },
             setSuggProgress,
           )

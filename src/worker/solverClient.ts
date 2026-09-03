@@ -246,6 +246,9 @@ function chunkResults(responses: WorkerResponse[]) {
 
 const TOP_N = 5
 const REFINE_TOP_K = 10
+/** oneshot 粗ランク後に逐次再ランクへ回す候補数と、その反復数。 */
+const SEQ_REFINE_K = 10
+const SEQ_REFINE_ITERS = 160
 
 // ---- 公開タスク ----------------------------------------------------------------
 
@@ -261,6 +264,8 @@ export interface SuggestInitialParams {
   rolloutInner?: number
   /** rollout の末端見積もりモデル（解析は 'policy'）。 */
   rolloutLeaf?: 'streets' | 'policy'
+  /** 'oneshot' の一括配布枚数（小数部は混合比。既定は較正値 ONESHOT_N_DEFAULT）。 */
+  oneshotN?: number
 }
 
 /**
@@ -273,7 +278,7 @@ export function suggestInitialParallel(
   params: SuggestInitialParams,
   onProgress?: (frac: number) => void,
 ): PoolTask<SuggestionDTO[]> {
-  const { cards, dead, variantId, jokers, iters, futureModel, rolloutInner, rolloutLeaf } = params
+  const { cards, dead, variantId, jokers, iters, futureModel, rolloutInner, rolloutLeaf, oneshotN } = params
   const boards = generateInitialBoards(cards)
   const cardCodes = cards.map(cardToString)
   const deadCodes = dead.map(cardToString)
@@ -298,11 +303,47 @@ export function suggestInitialParallel(
     iters: chunkIters,
     seed: chunkSeed,
     futureModel: model,
+    oneshotN,
     rolloutInner,
     rolloutLeaf,
   })
 
   const run = async (): Promise<SuggestionDTO[]> => {
+    if (futureModel === 'oneshot') {
+      // 解析（2段構え）: ① oneshot（一括配布サロゲート）で全候補を粗ランク →
+      // ② 上位 SEQ_REFINE_K 候補だけ 'seqrefine'（逐次再ランク: 第2St=軽量policy、
+      // 第3St=V3厳密、第4-5St=厳密期待値）で採点し直す。oneshot は早期コミット不要の
+      // 勝負手バイアスを持つため（T[KK]検証で+7〜9点、2026-09）、最終順位は逐次側で決める。
+      const coarseSpecs = splitIndices(boards.length, solverPool.size).map((indices) => ({
+        units: indices.length,
+        req: chunkReq(indices, iters, seed, futureModel),
+      }))
+      const coarseFrac = 0.55
+      let task = runChunks(coarseSpecs, (d, t) => onProgress?.((t > 0 ? d / t : 0) * coarseFrac))
+      inner = task
+      const coarse = chunkResults(await task.promise)
+      if (canceled) throw new CanceledError()
+      coarse.sort((a, b) => b.score - a.score)
+
+      const refIdx = coarse.slice(0, SEQ_REFINE_K).map((m) => m.index)
+      const refineSpecs = splitIndices(refIdx.length, solverPool.size).map((slice) => ({
+        units: slice.length,
+        req: chunkReq(slice.map((i) => refIdx[i]), SEQ_REFINE_ITERS, seed + 1, 'seqrefine'),
+      }))
+      task = runChunks(refineSpecs, (d, t) =>
+        onProgress?.(coarseFrac + (t > 0 ? d / t : 0) * (1 - coarseFrac)),
+      )
+      inner = task
+      const refined = chunkResults(await task.promise)
+      if (canceled) throw new CanceledError()
+      refined.sort((a, b) => b.score - a.score)
+      onProgress?.(1)
+      const refinedIds = new Set(refined.map((m) => m.index))
+      const rest = coarse.filter((m) => !refinedIds.has(m.index))
+      return [...refined, ...rest]
+        .slice(0, TOP_N)
+        .map((m) => toSuggestionDTO(boards[m.index], undefined, m))
+    }
     if (futureModel === 'rollout') {
       // 解析: 全候補を rollout のレーシング（逐次淘汰）で採点。同じ物差しで全候補を
       // 少しずつ測り、統計的に見込みのない候補を早期脱落させて生き残りに本数を集中する。
@@ -384,6 +425,10 @@ export interface SuggestStreetParams {
   futureModel?: FutureModel
   rolloutInner?: number
   rolloutLeaf?: 'streets' | 'policy'
+  /** 第4ストリート候補の全列挙厳密評価（解析精度）。第5ストリートの厳密化は常時オン。 */
+  endgameExact?: boolean
+  /** 第3ストリート候補の2段厳密評価（解析精度）。 */
+  endgameNeed4?: boolean
 }
 
 /** ストリート手の推奨（候補をプール全体へ分割評価）。 */
@@ -391,7 +436,7 @@ export function suggestStreetParallel(
   params: SuggestStreetParams,
   onProgress?: (frac: number) => void,
 ): PoolTask<SuggestionDTO[]> {
-  const { board, drawn, dead, variantId, jokers, iters, futureModel, rolloutInner, rolloutLeaf } = params
+  const { board, drawn, dead, variantId, jokers, iters, futureModel, rolloutInner, rolloutLeaf, endgameExact, endgameNeed4 } = params
   const candidates = generateStreetBoards(board, drawn)
   const dto = boardDTO(board)
   const drawnCodes = drawn.map(cardToString)
@@ -425,6 +470,8 @@ export function suggestStreetParallel(
       futureModel,
       rolloutInner,
       rolloutLeaf,
+      endgameExact,
+      endgameNeed4,
     } satisfies WorkerRequest,
   }))
   const inner = runChunks(specs, (d, t) => onProgress?.(t > 0 ? d / t : 0))

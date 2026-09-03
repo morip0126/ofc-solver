@@ -100,6 +100,8 @@ export type WorkerRequest =
       /** rollout の内側モンテカルロ反復数（解析精度で増量する）。 */
       rolloutInner?: number
       rolloutLeaf?: 'streets' | 'policy'
+      /** 'oneshot' の一括配布枚数（小数部は混合比）。 */
+      oneshotN?: number
     }
   | {
       id: number
@@ -115,6 +117,11 @@ export type WorkerRequest =
       futureModel?: FutureModel
       rolloutInner?: number
       rolloutLeaf?: 'streets' | 'policy'
+      /** 第4ストリート候補の全列挙厳密評価（解析精度）。 */
+      endgameExact?: boolean
+      /** 第3ストリート候補の2段厳密評価（解析精度）。 */
+      endgameNeed4?: boolean
+      oneshotN?: number
     }
 
 export type WorkerResponse =
@@ -239,6 +246,7 @@ self.onmessage = (e: MessageEvent<WorkerRequest>) => {
             futureModel: msg.futureModel,
             rolloutInner: msg.rolloutInner,
             rolloutLeaf: msg.rolloutLeaf,
+            oneshotN: msg.oneshotN,
             onProgress: progressReporter(msg.id),
           },
         )
@@ -259,6 +267,9 @@ self.onmessage = (e: MessageEvent<WorkerRequest>) => {
             futureModel: msg.futureModel,
             rolloutInner: msg.rolloutInner,
             rolloutLeaf: msg.rolloutLeaf,
+            endgameExact: msg.endgameExact,
+            endgameNeed4: msg.endgameNeed4,
+            oneshotN: msg.oneshotN,
             onProgress: progressReporter(msg.id),
           },
         )
