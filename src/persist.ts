@@ -13,15 +13,12 @@ import {
   parseCards,
 } from './domain'
 
-export type Precision = 'fast' | 'standard' | 'high' | 'ultra' | 'deep'
-
 export interface PersistedSettings {
   lang: 'ja' | 'en'
   variantId: VariantId
   players: 2 | 3
   mode: 'play' | 'fl' | 'vs' | 'drill'
   useJokers: boolean
-  precision: Precision
 }
 
 export interface GameBoard {
@@ -170,8 +167,6 @@ export function loadSettings(): Partial<PersistedSettings> {
   const mode = oneOf(o.mode, ['play', 'fl', 'vs', 'drill'] as const)
   if (mode) out.mode = mode
   if (typeof o.useJokers === 'boolean') out.useJokers = o.useJokers
-  const precision = oneOf(o.precision, ['fast', 'standard', 'high', 'ultra', 'deep'] as const)
-  if (precision) out.precision = precision
   return out
 }
 
