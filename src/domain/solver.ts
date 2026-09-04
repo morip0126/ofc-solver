@@ -2102,7 +2102,10 @@ function getSharedNeed4Evaluator(
   const key = `${variant.id}|${options.jokers ? 1 : 0}|${options.foulWeight ?? ''}|${options.flValues ? JSON.stringify(options.flValues) : ''}`
   let ev = sharedNeed4.get(key)
   if (!ev) {
-    ev = createNeed4Evaluator(variant, options, { skeletons: 8000, gTables: 60000 })
+    // キャッシュ上限はモバイルのタブメモリ制約に合わせる（gテーブル1件 ≈ 15KB、
+    // ワーカーごとに独立に持つため大きくするとレンダラーOOMでタブが落ちる。
+    // 2500件 ≈ 37MB/ワーカー。計測ハーネスは createNeed4Evaluator を直接使い独自上限）。
+    ev = createNeed4Evaluator(variant, options, { skeletons: 400, gTables: 2500 })
     sharedNeed4.set(key, ev)
   }
   return ev
